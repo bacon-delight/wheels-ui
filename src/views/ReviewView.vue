@@ -1,12 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import ConfidenceBadge from '../components/ConfidenceBadge.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const { eid, did, version } = route.params
 const base = `/engagements/${eid}/documents/${did}/versions/${version}`
@@ -109,7 +110,14 @@ async function approveAll() {
   bulkBusy.value = false
 }
 
-onMounted(load)
+onMounted(() => {
+  // The split-screen is a provider underwriting tool; clients get the clean terms view.
+  if (!auth.isProvider) {
+    router.replace(`/engagements/${eid}`)
+    return
+  }
+  load()
+})
 </script>
 
 <template>

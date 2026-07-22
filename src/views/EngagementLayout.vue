@@ -43,7 +43,7 @@ watch(() => route.params.eid, reload)
         :key="t.name"
         :to="{ name: t.name, params: { eid: route.params.eid } }"
         class="tab"
-        active-class="active"
+        exact-active-class="active"
       >{{ t.label }}</router-link>
     </nav>
 

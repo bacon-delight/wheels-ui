@@ -59,7 +59,7 @@ onMounted(async () => {
               <span class="muted small">{{ when(e.ts) }}</span>
             </div>
             <div class="muted small">
-              by {{ e.actor_role }}<span v-if="e.comment"> — “{{ e.comment }}”</span>
+              by {{ e.actor_name || e.actor_role }}<span v-if="e.comment"> — “{{ e.comment }}”</span>
             </div>
           </div>
         </div>

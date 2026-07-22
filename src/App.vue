@@ -1,13 +1,20 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import OnboardingView from './views/OnboardingView.vue'
 import { useAuthStore } from './stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
 
 const bare = computed(() => route.name === 'login')
+
+function ensureProfile() {
+  if (auth.isAuthenticated && !auth.profileChecked) auth.fetchProfile()
+}
+onMounted(ensureProfile)
+watch(() => auth.isAuthenticated, ensureProfile)
 const initials = computed(() =>
   (auth.name || auth.email || '?')
     .split(/[@\s.]+/)
@@ -19,6 +26,10 @@ const initials = computed(() =>
 
 <template>
   <router-view v-if="bare" />
+
+  <div v-else-if="auth.isAuthenticated && !auth.profileChecked" class="loading">Loading…</div>
+
+  <OnboardingView v-else-if="auth.needsOnboarding" />
 
   <div v-else class="shell">
     <aside class="sidebar">
@@ -81,6 +92,7 @@ const initials = computed(() =>
 .uname { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .urole { font-size: 12px; color: var(--muted); }
 .content { overflow-y: auto; }
+.loading { display: grid; place-items: center; height: 100vh; color: var(--muted); }
 @media (max-width: 720px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }

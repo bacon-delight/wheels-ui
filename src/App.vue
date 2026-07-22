@@ -1,20 +1,13 @@
 <script setup>
-import { computed, onMounted, watch } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-import OnboardingView from './views/OnboardingView.vue'
 import { useAuthStore } from './stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
 
-const bare = computed(() => route.name === 'login')
-
-function ensureProfile() {
-  if (auth.isAuthenticated && !auth.profileChecked) auth.fetchProfile()
-}
-onMounted(ensureProfile)
-watch(() => auth.isAuthenticated, ensureProfile)
+const bare = computed(() => ['login', 'onboarding'].includes(route.name))
 const initials = computed(() =>
   (auth.name || auth.email || '?')
     .split(/[@\s.]+/)
@@ -26,10 +19,6 @@ const initials = computed(() =>
 
 <template>
   <router-view v-if="bare" />
-
-  <div v-else-if="auth.isAuthenticated && !auth.profileChecked" class="loading">Loading…</div>
-
-  <OnboardingView v-else-if="auth.needsOnboarding" />
 
   <div v-else class="shell">
     <aside class="sidebar">

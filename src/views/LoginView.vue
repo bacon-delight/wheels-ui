@@ -12,6 +12,7 @@ const route = useRoute()
 const email = ref('')
 const password = ref('')
 const newPassword = ref('')
+const confirmPassword = ref('')
 const challengeUser = ref(null)
 const err = ref('')
 const busy = ref(false)
@@ -39,6 +40,10 @@ async function submit() {
 }
 
 async function setNewPassword() {
+  if (newPassword.value !== confirmPassword.value) {
+    err.value = 'Passwords do not match'
+    return
+  }
   busy.value = true
   err.value = ''
   try {
@@ -85,7 +90,21 @@ async function setNewPassword() {
             autocomplete="new-password"
             required
           />
-          <button class="primary" type="submit" :disabled="busy">
+          <input
+            v-model="confirmPassword"
+            type="password"
+            placeholder="Confirm new password"
+            autocomplete="new-password"
+            required
+          />
+          <p v-if="confirmPassword && newPassword !== confirmPassword" class="err" style="margin: 0">
+            Passwords don't match
+          </p>
+          <button
+            class="primary"
+            type="submit"
+            :disabled="busy || newPassword.length < 12 || newPassword !== confirmPassword"
+          >
             {{ busy ? 'Saving…' : 'Set password & continue' }}
           </button>
         </form>

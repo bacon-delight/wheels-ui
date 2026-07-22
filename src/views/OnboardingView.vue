@@ -1,10 +1,12 @@
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
 const name = ref(auth.profile?.name || '')
 const phone = ref(auth.profile?.phone || '')
 const busy = ref(false)
@@ -16,6 +18,7 @@ async function save() {
   try {
     const r = await api.patch('/me', { name: name.value.trim(), phone: phone.value.trim() })
     auth.markOnboarded(r.data.profile)
+    router.replace('/')
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
   }

@@ -11,6 +11,12 @@ const routes = [
   },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   {
+    path: '/onboarding',
+    name: 'onboarding',
+    component: () => import('../views/OnboardingView.vue'),
+    meta: { auth: true },
+  },
+  {
     path: '/engagements/:eid',
     component: () => import('../views/EngagementLayout.vue'),
     meta: { auth: true },
@@ -41,6 +47,12 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.ready) await auth.init()
   if (to.meta.auth && !auth.isAuthenticated) return { name: 'login', query: { next: to.fullPath } }
+  if (auth.isAuthenticated) {
+    if (!auth.profileChecked) await auth.fetchProfile()
+    // Mandatory onboarding: no authed page until name + phone are set.
+    if (auth.needsOnboarding && to.name !== 'onboarding') return { name: 'onboarding' }
+    if (!auth.needsOnboarding && to.name === 'onboarding') return { path: '/' }
+  }
 })
 
 export default router

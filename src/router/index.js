@@ -12,14 +12,25 @@ const routes = [
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   {
     path: '/engagements/:eid',
-    name: 'engagement',
-    component: () => import('../views/EngagementDetailView.vue'),
+    component: () => import('../views/EngagementLayout.vue'),
     meta: { auth: true },
+    children: [
+      { path: '', name: 'eng-overview', component: () => import('../views/tabs/OverviewTab.vue') },
+      { path: 'terms', name: 'eng-terms', component: () => import('../views/tabs/TermsTab.vue') },
+      { path: 'status', name: 'eng-status', component: () => import('../views/tabs/StatusTab.vue') },
+      { path: 'people', name: 'eng-people', component: () => import('../views/tabs/PeopleTab.vue') },
+    ],
   },
   {
     path: '/engagements/:eid/documents/:did/v/:version/review',
     name: 'review',
     component: () => import('../views/ReviewView.vue'),
+    meta: { auth: true },
+  },
+  {
+    path: '/engagements/:eid/documents/:did/v/:version/source',
+    name: 'source',
+    component: () => import('../views/SourceView.vue'),
     meta: { auth: true },
   },
 ]

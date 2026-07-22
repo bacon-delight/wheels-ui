@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 
+import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
@@ -11,6 +12,7 @@ const err = ref('')
 const name = ref('')
 const clientName = ref('')
 const creating = ref(false)
+const showNew = ref(false)
 
 async function load() {
   loading.value = true
@@ -30,6 +32,7 @@ async function create() {
     await api.post('/engagements', { name: name.value, client_name: clientName.value })
     name.value = ''
     clientName.value = ''
+    showNew.value = false
     await load()
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
@@ -41,33 +44,33 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="container stack">
-    <h1>Engagements</h1>
+  <div class="page">
+    <div class="spread head">
+      <div>
+        <h1>Engagements</h1>
+        <p class="muted" style="margin: 4px 0 0">Client onboarding &amp; billing-term review</p>
+      </div>
+      <button v-if="auth.isProvider" class="primary" @click="showNew = !showNew">＋ New engagement</button>
+    </div>
 
-    <div v-if="auth.isProvider" class="card" style="padding: 16px">
-      <h2>New engagement</h2>
+    <div v-if="showNew && auth.isProvider" class="card np">
       <div class="row">
         <input v-model="name" placeholder="Engagement name — e.g. Apex Field Services" />
         <input v-model="clientName" placeholder="Client legal name — e.g. Apex Field Services LLC" />
         <button class="primary" :disabled="!name || !clientName || creating" @click="create">
-          Create
+          {{ creating ? 'Creating…' : 'Create' }}
         </button>
       </div>
     </div>
 
-    <p v-if="err" class="muted">{{ err }}</p>
+    <p v-if="err" class="err">{{ err }}</p>
     <p v-if="loading" class="muted">Loading…</p>
 
-    <div v-else class="grid">
-      <router-link
-        v-for="e in engagements"
-        :key="e.engagement_id"
-        :to="`/engagements/${e.engagement_id}`"
-        class="card eng"
-      >
+    <div v-else class="grid cards">
+      <router-link v-for="e in engagements" :key="e.engagement_id" :to="`/engagements/${e.engagement_id}`" class="card ecard">
         <div class="spread">
           <h2 style="margin: 0">{{ e.name }}</h2>
-          <span class="pill st">{{ e.status }}</span>
+          <StatusPill v-if="e.status" :status="e.status" />
         </div>
         <div class="muted">{{ e.client_name }}</div>
       </router-link>
@@ -77,7 +80,12 @@ onMounted(load)
 </template>
 
 <style scoped>
-.eng { padding: 16px; text-decoration: none; color: inherit; display: block; }
-.eng:hover { border-color: var(--accent); text-decoration: none; }
-.pill.st { background: var(--accent-weak); color: var(--accent); }
+.page { max-width: 1000px; margin: 0 auto; padding: 32px; }
+.head { margin-bottom: 24px; }
+.np { padding: 16px; margin-bottom: 20px; }
+.err { color: var(--risk); }
+.cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.ecard { padding: 20px; text-decoration: none; color: inherit; display: block; transition: all 0.12s; }
+.ecard:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 4px 20px rgba(91, 80, 230, 0.08); }
+.ecard h2 { font-size: 18px; }
 </style>

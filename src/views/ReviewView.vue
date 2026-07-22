@@ -17,6 +17,7 @@ const needsReview = ref(0)
 const selected = ref(null)
 const busy = ref('')
 const err = ref('')
+const loaded = ref(false)
 const pageEls = ref({})
 
 const canApprove = computed(() => auth.isProvider)
@@ -29,6 +30,8 @@ async function load() {
     needsReview.value = f.data.needs_review_count
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
+  } finally {
+    loaded.value = true
   }
 }
 
@@ -103,7 +106,10 @@ onMounted(load)
           <div v-for="(c, i) in highlightsOn(p.page)" :key="i" class="hl" :style="rectStyle(c.bbox)" />
           <div class="pageno">Page {{ p.page }}</div>
         </div>
-        <p v-if="!pages.length" class="muted" style="padding: 20px">Rendering pages…</p>
+        <p v-if="!pages.length && !loaded" class="muted" style="padding: 20px">Rendering pages…</p>
+        <p v-else-if="!pages.length" class="muted" style="padding: 20px">
+          This document hasn't been processed yet — upload it and run extraction first.
+        </p>
       </div>
 
       <!-- RIGHT: extracted fields, needs-review first -->
@@ -153,7 +159,13 @@ onMounted(load)
             </button>
           </div>
         </div>
-        <p v-if="!fields.length" class="muted" style="padding: 20px">No fields yet.</p>
+        <p v-if="!fields.length && !loaded" class="muted" style="padding: 20px">Loading…</p>
+        <p v-else-if="!fields.length && !canApprove" class="muted" style="padding: 20px">
+          Approved terms will appear here once the provider submits them for your review.
+        </p>
+        <p v-else-if="!fields.length" class="muted" style="padding: 20px">
+          No extracted terms yet — run extraction on this document.
+        </p>
       </div>
     </div>
   </div>

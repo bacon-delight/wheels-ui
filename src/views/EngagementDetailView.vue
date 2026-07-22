@@ -30,6 +30,14 @@ async function load() {
 }
 
 function docFor(type) {
+  // Prefer the document actually linked to the submission slot (a failed first upload can
+  // leave an orphan of the same type; the slot always points at the current one).
+  const sub = submission.value
+  const id = type === 'MSA' ? sub?.msa_document_id : sub?.mla_document_id
+  if (id) {
+    const linked = documents.value.find((d) => d.document_id === id)
+    if (linked) return linked
+  }
   return documents.value.find((d) => d.doc_type === type)
 }
 

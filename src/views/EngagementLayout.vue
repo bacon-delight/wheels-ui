@@ -12,6 +12,7 @@ const tabs = computed(() => {
   const base = [
     { name: 'eng-overview', label: 'Overview' },
     { name: 'eng-terms', label: 'Terms' },
+    { name: 'eng-billing', label: 'Billing' },
     { name: 'eng-status', label: 'Status' },
   ]
   if (eng.isProvider) base.push({ name: 'eng-people', label: 'People' })

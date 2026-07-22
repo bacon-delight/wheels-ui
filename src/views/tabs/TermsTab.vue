@@ -78,9 +78,29 @@ onMounted(() => {
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
     </div>
 
-    <!-- Standard next-step -->
-    <div class="card pad" v-if="['IN_UNDERWRITING', 'PENDING_FINANCE_APPROVAL', 'FINANCE_APPROVED'].includes(eng.status)">
-      <h2>Next step</h2>
+    <!-- Proposed terms summary (analyst + finance visibility) -->
+    <div class="card pad" v-if="hasTerms() && eng.reviewable">
+      <h2>Proposed terms</h2>
+      <p class="muted small" style="margin: -6px 0 10px">Open <strong>Review</strong> on an agreement above to see the source or correct a value.</p>
+      <div v-for="grp in eng.clientTerms" :key="grp.document_id" class="termgrp">
+        <div class="tg">{{ grp.doc_type === 'MSA' ? 'Fleet Management Services (MSA)' : 'Vehicle Lease (MLA)' }}</div>
+        <div v-for="f in grp.fields.filter((x) => x.elected)" :key="f.field_id" class="term">
+          <strong>{{ prettyService(f.service) }}</strong>
+          <ul class="fees">
+            <li v-for="(fi, i) in f.fee_items" :key="i">
+              <span v-if="feeLine(fi)" class="val">{{ feeLine(fi) }}</span>
+              <span v-if="fi.description" class="muted"> {{ feeLine(fi) ? '— ' : '' }}{{ fi.description }}</span>
+              <ul v-if="fi.tier_bands?.length" class="tiers"><li v-for="(t, j) in fi.tier_bands" :key="j">units {{ t.min_units }}–{{ t.max_units ?? '∞' }}: {{ money(t.amount) }}</li></ul>
+            </li>
+          </ul>
+          <div v-if="f.citations?.length" class="cite muted small">📄 p{{ f.citations[0].page }}<span v-if="f.citations[0].section_label"> · {{ f.citations[0].section_label }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Next-step actions -->
+    <div class="card pad" v-if="['IN_UNDERWRITING', 'PENDING_FINANCE_APPROVAL'].includes(eng.status)">
+      <h2>{{ eng.status === 'PENDING_FINANCE_APPROVAL' ? 'Finance decision' : 'Next step' }}</h2>
       <div v-if="eng.status === 'IN_UNDERWRITING'">
         <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to client' }}</button>
         <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>

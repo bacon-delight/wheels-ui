@@ -186,10 +186,10 @@ onMounted(() => {
               class="fi-desc"
               @click.stop
             />
-            <div class="fi-row">
-              <label>$<input type="number" step="0.01" v-model.number="fi.amount" :disabled="!editing[f.field_id]" @click.stop /></label>
-              <label>%<input type="number" step="0.01" v-model.number="fi.rate_pct" :disabled="!editing[f.field_id]" @click.stop /></label>
-              <label class="unit">unit<input v-model="fi.unit_basis" :disabled="!editing[f.field_id]" @click.stop /></label>
+            <div class="fi-row" v-if="editing[f.field_id] || fi.amount != null || fi.rate_pct != null || fi.unit_basis">
+              <label v-if="editing[f.field_id] || fi.amount != null">$<input type="number" step="0.01" v-model.number="fi.amount" :disabled="!editing[f.field_id]" @click.stop /></label>
+              <label v-if="editing[f.field_id] || fi.rate_pct != null">%<input type="number" step="0.01" v-model.number="fi.rate_pct" :disabled="!editing[f.field_id]" @click.stop /></label>
+              <label class="unit" v-if="editing[f.field_id] || fi.unit_basis">unit<input v-model="fi.unit_basis" :disabled="!editing[f.field_id]" @click.stop /></label>
             </div>
             <ul v-if="fi.tier_bands?.length" class="tiers">
               <li v-for="(t, j) in fi.tier_bands" :key="j">

@@ -57,7 +57,7 @@ export const useEngagementStore = defineStore('engagement', {
       this.eid = eid
       try {
         this.data = (await api.get(`/engagements/${eid}`)).data
-        if (this.data.your_role === 'client') await this.loadClientTerms()
+        if (this.reviewable) await this.loadClientTerms()
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       } finally {

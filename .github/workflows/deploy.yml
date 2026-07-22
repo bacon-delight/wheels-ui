@@ -1,0 +1,47 @@
+name: ui ci/cd
+
+# PRs build (validation). Push to `dev` builds and syncs the static site to S3 + invalidates
+# CloudFront. No infra redeploy — Infra owns the bucket + distribution.
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-2
+  UI_BUCKET: wheels-dev-ui-432417416277
+  DISTRIBUTION_ID: E3B8HALYNM4BRR
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync to S3 + invalidate CloudFront
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        run: |
+          # Long-cache the fingerprinted assets, no-cache the HTML entrypoint.
+          aws s3 sync dist/ "s3://$UI_BUCKET/" --delete \
+            --exclude index.html --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html "s3://$UI_BUCKET/index.html" \
+            --cache-control "no-cache"
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"

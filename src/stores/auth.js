@@ -1,16 +1,15 @@
 import { defineStore } from 'pinia'
 
-import { getUser, login, logout } from '../services/auth'
+import { getSession, signOut } from '../services/auth'
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({ user: null, ready: false }),
+  state: () => ({ claims: null, ready: false }),
   getters: {
-    isAuthenticated: (s) => !!s.user && !s.user.expired,
-    profile: (s) => s.user?.profile || {},
-    email: (s) => s.user?.profile?.email || '',
-    name: (s) => s.user?.profile?.name || s.user?.profile?.email || '',
+    isAuthenticated: (s) => !!s.claims,
+    email: (s) => s.claims?.email || '',
+    name: (s) => s.claims?.name || s.claims?.email || '',
     groups: (s) => {
-      const g = s.user?.profile?.['cognito:groups']
+      const g = s.claims?.['cognito:groups']
       return Array.isArray(g) ? g : g ? [g] : []
     },
     isProvider() {
@@ -22,13 +21,18 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     async init() {
-      this.user = await getUser()
+      const session = await getSession()
+      this.claims = session ? session.getIdToken().payload : null
       this.ready = true
     },
-    setUser(u) {
-      this.user = u
+    setSession(session) {
+      this.claims = session.getIdToken().payload
+      this.ready = true
     },
-    login: () => login(),
-    logout: () => logout(),
+    logout() {
+      signOut()
+      this.claims = null
+      window.location.href = '/login'
+    },
   },
 })

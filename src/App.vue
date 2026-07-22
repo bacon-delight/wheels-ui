@@ -9,7 +9,7 @@ const route = useRoute()
 
 <template>
   <div class="app">
-    <header v-if="route.name !== 'login' && route.name !== 'callback'" class="topbar">
+    <header v-if="route.name !== 'login'" class="topbar">
       <div class="brand">
         <router-link to="/" class="brand-link">Wheels <span>Contract Intelligence</span></router-link>
       </div>

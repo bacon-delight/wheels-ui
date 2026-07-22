@@ -1,28 +1,56 @@
-// Cognito Hosted UI login via OIDC Authorization Code + PKCE.
-import { UserManager, WebStorageStateStore } from 'oidc-client-ts'
+// Native, in-app Cognito login (SRP) — no hosted-UI redirect.
+import {
+  AuthenticationDetails,
+  CognitoUser,
+  CognitoUserPool,
+} from 'amazon-cognito-identity-js'
 
 import { config } from '../config'
 
-export const userManager = new UserManager({
-  authority: config.cognito.authority,
-  client_id: config.cognito.clientId,
-  redirect_uri: config.cognito.redirectUri,
-  post_logout_redirect_uri: config.cognito.postLogoutRedirectUri,
-  response_type: 'code',
-  scope: config.cognito.scope,
-  userStore: new WebStorageStateStore({ store: window.localStorage }),
-  automaticSilentRenew: true,
+const pool = new CognitoUserPool({
+  UserPoolId: config.cognito.userPoolId,
+  ClientId: config.cognito.clientId,
 })
 
-export const login = () => userManager.signinRedirect()
-export const handleCallback = () => userManager.signinRedirectCallback()
-export const getUser = () => userManager.getUser()
+// Resolve to a valid session (auto-refreshes with the stored refresh token) or null.
+export function getSession() {
+  return new Promise((resolve) => {
+    const user = pool.getCurrentUser()
+    if (!user) return resolve(null)
+    user.getSession((err, session) => {
+      resolve(err || !session?.isValid() ? null : session)
+    })
+  })
+}
 
-export async function logout() {
-  await userManager.removeUser()
-  const { hostedDomain, clientId, postLogoutRedirectUri } = config.cognito
-  // Cognito's logout uses its own endpoint/param shape.
-  window.location.href =
-    `${hostedDomain}/logout?client_id=${clientId}` +
-    `&logout_uri=${encodeURIComponent(postLogoutRedirectUri)}`
+export async function getIdToken() {
+  const session = await getSession()
+  return session ? session.getIdToken().getJwtToken() : null
+}
+
+// Returns { session } on success, or { newPasswordRequired, user } for first-login users.
+export function signIn(email, password) {
+  return new Promise((resolve, reject) => {
+    const user = new CognitoUser({ Username: email, Pool: pool })
+    const details = new AuthenticationDetails({ Username: email, Password: password })
+    user.authenticateUser(details, {
+      onSuccess: (session) => resolve({ session }),
+      onFailure: (err) => reject(err),
+      newPasswordRequired: () => resolve({ newPasswordRequired: true, user }),
+    })
+  })
+}
+
+export function completeNewPassword(user, newPassword) {
+  return new Promise((resolve, reject) => {
+    user.completeNewPasswordChallenge(
+      newPassword,
+      {},
+      { onSuccess: (session) => resolve(session), onFailure: (err) => reject(err) },
+    )
+  })
+}
+
+export function signOut() {
+  pool.getCurrentUser()?.signOut()
 }

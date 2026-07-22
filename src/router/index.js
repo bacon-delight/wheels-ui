@@ -10,7 +10,6 @@ const routes = [
     meta: { auth: true },
   },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
-  { path: '/callback', name: 'callback', component: () => import('../views/CallbackView.vue') },
   {
     path: '/engagements/:eid',
     name: 'engagement',

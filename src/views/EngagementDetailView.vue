@@ -75,8 +75,9 @@ async function action(verb, body) {
     await load()
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
+  } finally {
+    busy.value = ''
   }
-  busy.value = ''
 }
 
 async function invite() {
@@ -116,6 +117,14 @@ const reviewable = computed(() =>
    'FINANCE_APPROVED', 'ACTIVE'].includes(status.value),
 )
 
+// Review progress across the submission's two agreements.
+const reviewDocs = computed(() => ['MSA', 'MLA'].map((t) => docFor(t)).filter(Boolean))
+const totalTerms = computed(() => reviewDocs.value.reduce((n, d) => n + (d.review?.total || 0), 0))
+const approvedTerms = computed(() =>
+  reviewDocs.value.reduce((n, d) => n + (d.review?.approved || 0), 0),
+)
+const allApproved = computed(() => totalTerms.value > 0 && approvedTerms.value === totalTerms.value)
+
 onMounted(load)
 </script>
 
@@ -138,9 +147,22 @@ onMounted(load)
       <div class="docs">
         <div v-for="type in ['MSA', 'MLA']" :key="type" class="doc">
           <div class="spread">
-            <div>
+            <div class="dinfo">
               <h3>{{ type }}</h3>
               <div class="muted small">{{ docFor(type)?.filename || 'Not uploaded' }}</div>
+              <div v-if="docFor(type)?.review?.total && reviewable" class="prog">
+                <div class="bar">
+                  <div
+                    class="fill"
+                    :class="{ done: docFor(type).review.pct === 100 }"
+                    :style="{ width: docFor(type).review.pct + '%' }"
+                  />
+                </div>
+                <span class="small" :class="docFor(type).review.pct === 100 ? 'okc' : 'muted'">
+                  {{ docFor(type).review.pct }}% reviewed
+                  ({{ docFor(type).review.approved }}/{{ docFor(type).review.total }})
+                </span>
+              </div>
             </div>
             <div class="row">
               <router-link
@@ -173,10 +195,18 @@ onMounted(load)
     <!-- Lifecycle actions -->
     <div class="card sec" v-if="canSubmitToClient || clientGate || financeGate || canSetupBilling">
       <h2>Next step</h2>
-      <div class="row" v-if="canSubmitToClient">
-        <button class="primary" :disabled="busy" @click="action('submit-to-client')">
-          Submit terms to client
+      <div v-if="canSubmitToClient">
+        <button
+          class="primary"
+          :disabled="busy || !allApproved"
+          @click="action('submit-to-client')"
+        >
+          {{ busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to client' }}
         </button>
+        <p v-if="!allApproved" class="muted small" style="margin-top: 8px">
+          Approve all {{ totalTerms }} terms first — {{ approvedTerms }}/{{ totalTerms }} approved.
+          Open each agreement's <strong>Review</strong> and click “Approve all”.
+        </p>
       </div>
       <div class="row" v-if="clientGate">
         <button class="primary" :disabled="busy" @click="action('client-approve')">Approve terms</button>
@@ -233,4 +263,10 @@ onMounted(load)
 .members { display: grid; gap: 6px; }
 .member { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .pill.role { background: #eef0f2; color: var(--muted); text-transform: capitalize; }
+.dinfo { min-width: 0; }
+.prog { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.bar { width: 120px; height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+.fill.done { background: var(--ok); }
+.okc { color: var(--ok); font-weight: 600; }
 </style>

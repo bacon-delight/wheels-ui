@@ -86,6 +86,6 @@ onMounted(load)
 .err { color: var(--risk); }
 .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .ecard { padding: 20px; text-decoration: none; color: inherit; display: block; transition: all 0.12s; }
-.ecard:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 4px 20px rgba(91, 80, 230, 0.08); }
+.ecard:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 4px 20px rgba(209, 85, 43, 0.1); }
 .ecard h2 { font-size: 18px; }
 </style>

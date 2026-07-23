@@ -73,7 +73,7 @@ const nextHint = computed(() => {
 .small { font-size: 12px; }
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .next { border-left: 3px solid var(--accent); }
-.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #eef0ff); }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #f7e8df); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
 .rbody { margin: 0 0 12px; font-size: 16px; line-height: 1.5; font-style: italic; }
 .golink { font-weight: 600; }

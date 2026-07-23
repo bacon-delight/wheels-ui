@@ -317,7 +317,7 @@ onMounted(() => {
 .btn-link { border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; }
 .btn-link:hover { border-color: var(--muted); text-decoration: none; }
 .req { background: var(--warn-weak); color: var(--warn); border-radius: 10px; padding: 12px 14px; font-style: italic; }
-.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #eef0ff); }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #f7e8df); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
 .rbody { margin: 0; font-size: 16px; line-height: 1.5; font-style: italic; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }

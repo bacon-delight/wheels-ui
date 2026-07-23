@@ -8,6 +8,8 @@ const props = defineProps({
   eid: { type: String, required: true },
   sid: { type: String, required: true },
   status: { type: String, default: '' },
+  // In the fixed-height Review split, cap the panel and let it scroll on its own.
+  inReview: { type: Boolean, default: false },
 })
 
 const data = ref(null)
@@ -32,7 +34,7 @@ watch(() => [props.sid, props.status], load, { immediate: true })
 </script>
 
 <template>
-  <div v-if="data && data.applicable" class="card pad cr">
+  <div v-if="data && data.applicable" class="card pad cr" :class="{ crscroll: inReview }">
     <div class="spread" style="margin-bottom: 6px">
       <h2 style="margin: 0">Change verification</h2>
       <span class="badge info">Re-upload vs client request</span>
@@ -61,6 +63,8 @@ watch(() => [props.sid, props.status], load, { immediate: true })
 .pad { padding: 20px 22px; }
 .small { font-size: 12px; }
 .cr { border-left: 3px solid var(--warn); }
+/* In the Review split, the panel is a bounded, self-scrolling banner so the split stays usable. */
+.crscroll { flex: 0 0 auto; max-height: 42vh; overflow-y: auto; margin: 12px 16px 2px; }
 .overall { margin: 0 0 12px; font-size: 15px; line-height: 1.5; }
 .cri { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
 .cri.flag { border-color: var(--warn); background: var(--warn-weak); }

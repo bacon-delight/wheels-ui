@@ -147,7 +147,7 @@ onMounted(() => {
 
     <p v-if="err" class="err">{{ err }}</p>
 
-    <ChangeReviewPanel v-if="sid" :eid="eid" :sid="sid" style="margin-bottom: 16px" />
+    <ChangeReviewPanel v-if="sid" :eid="eid" :sid="sid" in-review />
 
     <div class="split">
       <div class="doc-pane">

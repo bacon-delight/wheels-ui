@@ -154,6 +154,13 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- Provider's response to a change request -->
+    <div class="card pad response" v-if="eng.status === 'PENDING_CLIENT_APPROVAL' && eng.submission?.latest_comment">
+      <div class="rhead">💬 Response from {{ eng.submission?.latest_comment_by || 'your provider' }}</div>
+      <p class="rbody">“{{ eng.submission.latest_comment }}”</p>
+      <p class="muted small" style="margin: 8px 0 0">Please review the updated terms below, then approve or request further changes.</p>
+    </div>
+
     <template v-if="!hasTerms()">
       <div class="card pad"><p class="muted" style="margin: 0">{{ eng.clientMessage }}</p></div>
     </template>
@@ -235,6 +242,9 @@ onMounted(() => {
 .btn-link { border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; }
 .btn-link:hover { border-color: var(--muted); text-decoration: none; }
 .req { background: var(--warn-weak); color: var(--warn); border-radius: 10px; padding: 12px 14px; font-style: italic; }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #eef0ff); }
+.rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
+.rbody { margin: 0; font-size: 16px; line-height: 1.5; font-style: italic; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .opt { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
 .fld { display: flex; flex-direction: column; gap: 6px; }

@@ -35,6 +35,13 @@ const nextHint = computed(() => {
 
 <template>
   <div class="stack">
+    <!-- Provider's response to the client's change request -->
+    <div v-if="!eng.isProvider && eng.status === 'PENDING_CLIENT_APPROVAL' && eng.submission?.latest_comment" class="card pad response">
+      <div class="rhead">💬 Response from {{ eng.submission?.latest_comment_by || 'your provider' }}</div>
+      <p class="rbody">“{{ eng.submission.latest_comment }}”</p>
+      <router-link :to="{ name: 'eng-terms', params: { eid: route.params.eid } }" class="golink" style="color: var(--accent-ink)">Review the updated terms →</router-link>
+    </div>
+
     <div class="card pad">
       <div class="spread" style="margin-bottom: 18px">
         <h2 style="margin: 0">Journey</h2>
@@ -66,6 +73,9 @@ const nextHint = computed(() => {
 .small { font-size: 12px; }
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .next { border-left: 3px solid var(--accent); }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #eef0ff); }
+.rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
+.rbody { margin: 0 0 12px; font-size: 16px; line-height: 1.5; font-style: italic; }
 .golink { font-weight: 600; }
 @media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 </style>

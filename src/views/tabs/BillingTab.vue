@@ -76,7 +76,8 @@ async function setupBilling() {
             <div class="big">{{ money(estMonthly) }}<span class="muted per">/mo</span></div>
             <div class="muted small">Recurring per-vehicle fees for a fleet of {{ fleet }} vehicles. Usage &amp; pass-through charges bill separately.</div>
           </div>
-          <label class="fleet"><span class="label">Fleet size</span><input type="number" v-model.number="fleet" min="1" /></label>
+          <label class="fleet" v-if="eng.isProvider"><span class="label">Fleet size</span><input type="number" v-model.number="fleet" min="1" /></label>
+          <div class="fleet" v-else><span class="label">Fleet size</span><div class="fleetval">{{ fleet }}</div></div>
         </div>
       </div>
 
@@ -128,6 +129,7 @@ async function setupBilling() {
 .big { font-family: var(--serif); font-size: 32px; font-weight: 600; margin: 4px 0; }
 .per { font-size: 16px; font-family: var(--sans); margin-left: 4px; }
 .fleet { display: flex; flex-direction: column; gap: 6px; width: 120px; }
+.fleetval { font-family: var(--serif); font-size: 22px; font-weight: 600; padding: 4px 0; }
 .line { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .line:last-child { border-bottom: none; }
 .fees { margin: 4px 0 0; padding-left: 18px; }

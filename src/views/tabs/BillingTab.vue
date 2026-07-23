@@ -43,6 +43,10 @@ const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
 const schedule = computed(() => billing.value?.schedule || [])
 const summary = computed(() => billing.value?.summary || {})
 const FREQ = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annual' }
+const BILLED = { monthly: 'monthly', quarterly: 'quarterly', annual: 'annually' }
+const MONTHS = { monthly: 1, quarterly: 3, annual: 12 }
+const months = computed(() => MONTHS[billing.value?.frequency] || 1)
+const perInstallment = computed(() => estMonthly.value * months.value)
 const STATUS = {
   paid: { label: 'Paid', cls: 'ok' },
   due: { label: 'Due now', cls: 'due' },
@@ -130,6 +134,7 @@ async function setupBilling() {
           <div>
             <div class="label">Estimated monthly recurring</div>
             <div class="big">{{ money(estMonthly) }}<span class="muted per">/mo</span></div>
+            <div v-if="active && months > 1" class="billed">Billed {{ BILLED[billing.frequency] }} · <strong>{{ money(perInstallment) }}</strong> per installment ({{ months }} × monthly)</div>
             <div class="muted small">Recurring per-vehicle fees for a fleet of {{ fleet }} vehicles. Usage &amp; pass-through charges bill separately.</div>
           </div>
           <label class="fleet" v-if="eng.isProvider">
@@ -149,7 +154,7 @@ async function setupBilling() {
           </span>
         </div>
         <p class="muted small" style="margin: 0 0 12px">
-          {{ FREQ[billing.frequency] || 'Monthly' }} billing.
+          {{ FREQ[billing.frequency] || 'Monthly' }} billing<span v-if="months > 1"> — each installment covers {{ months }} months ({{ months }} × {{ money(estMonthly) }}/mo)</span>.
           <template v-if="eng.isProvider">Track payments and remind the client of any missed dues.</template>
           <template v-else>Pay each installment on its due date, or pay the next one early.</template>
         </p>
@@ -232,6 +237,7 @@ async function setupBilling() {
 .est { border-left: 3px solid var(--accent); }
 .big { font-family: var(--serif); font-size: 32px; font-weight: 600; margin: 4px 0; }
 .per { font-size: 16px; font-family: var(--sans); margin-left: 4px; }
+.billed { font-size: 13px; color: var(--accent-ink); margin: 2px 0 6px; }
 .fleet { display: flex; flex-direction: column; gap: 6px; width: 120px; }
 .fleetval { font-family: var(--serif); font-size: 22px; font-weight: 600; padding: 4px 0; }
 .line { padding: 10px 0; border-bottom: 1px solid var(--line); }

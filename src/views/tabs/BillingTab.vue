@@ -10,6 +10,9 @@ const eng = useEngagementStore()
 const billing = ref(null)
 const fleet = ref(100)
 const saving = ref(false)
+const paying = ref(null)
+const reminding = ref(null)
+const notice = ref('')
 
 async function loadBilling() {
   try {
@@ -21,14 +24,14 @@ async function loadBilling() {
 }
 onMounted(loadBilling)
 
-// Provider adjusts the fleet size -> persist it + recompute dues for the client & finance.
+// Provider adjusts the fleet size -> persist it + recompute dues (reload reflows the schedule).
 async function saveFleet() {
   const f = Math.max(1, Number(fleet.value) || 1)
   fleet.value = f
   saving.value = true
   try {
-    const r = await api.patch(`/engagements/${route.params.eid}/billing`, { fleet_size: f })
-    if (billing.value) billing.value.monthly_recurring = r.data.monthly_recurring
+    await api.patch(`/engagements/${route.params.eid}/billing`, { fleet_size: f })
+    await loadBilling()
   } catch {
     /* leave the local estimate; server will reconcile on next load */
   }
@@ -37,6 +40,43 @@ async function saveFleet() {
 
 const config = computed(() => billing.value?.config)
 const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
+const schedule = computed(() => billing.value?.schedule || [])
+const summary = computed(() => billing.value?.summary || {})
+const FREQ = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annual' }
+const STATUS = {
+  paid: { label: 'Paid', cls: 'ok' },
+  due: { label: 'Due now', cls: 'due' },
+  overdue: { label: 'Overdue', cls: 'risk' },
+  upcoming: { label: 'Upcoming', cls: 'soon' },
+}
+const fmtDate = (iso) =>
+  new Date(iso.slice(0, 10) + 'T00:00:00').toLocaleDateString(undefined, {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+
+async function payNow(row) {
+  paying.value = row.seq
+  notice.value = ''
+  try {
+    await api.post(`/engagements/${route.params.eid}/payments/${row.seq}:pay`)
+    await loadBilling()
+    notice.value = `Payment recorded for ${row.label}.`
+  } catch (e) {
+    notice.value = e.response?.data?.detail || e.message
+  }
+  paying.value = null
+}
+async function remind(row) {
+  reminding.value = row.seq
+  notice.value = ''
+  try {
+    await api.post(`/engagements/${route.params.eid}/payments/${row.seq}:remind`)
+    notice.value = `Reminder emailed to the client for ${row.label}.`
+  } catch (e) {
+    notice.value = e.response?.data?.detail || e.message
+  }
+  reminding.value = null
+}
 
 const monthlyPerUnit = (fi) => fi.amount != null && /per_(vehicle|unit).*(month)/.test(fi.unit_basis || '')
 
@@ -100,6 +140,51 @@ async function setupBilling() {
         </div>
       </div>
 
+      <!-- Payment schedule -->
+      <div class="card pad" v-if="schedule.length">
+        <div class="spread" style="margin-bottom: 4px">
+          <h2 style="margin: 0">Payment schedule</h2>
+          <span class="muted small">
+            {{ summary.paid_count || 0 }} paid<span v-if="summary.overdue_count"> · <span class="risktext">{{ summary.overdue_count }} overdue</span></span>
+          </span>
+        </div>
+        <p class="muted small" style="margin: 0 0 12px">
+          {{ FREQ[billing.frequency] || 'Monthly' }} billing.
+          <template v-if="eng.isProvider">Track payments and remind the client of any missed dues.</template>
+          <template v-else>Pay each installment on its due date, or pay the next one early.</template>
+        </p>
+        <div class="twrap">
+          <table class="sched">
+            <thead><tr><th>Payment</th><th>Due date</th><th class="r">Amount</th><th>Status</th><th class="r">Action</th></tr></thead>
+            <tbody>
+              <tr v-for="row in schedule" :key="row.seq" :class="{ over: row.status === 'overdue' }">
+                <td><strong>{{ row.label }}</strong><span v-if="row.kind === 'initial'" class="tag">Initial</span></td>
+                <td class="muted">{{ fmtDate(row.due_date) }}</td>
+                <td class="r mono">{{ money(row.amount) }}</td>
+                <td><span class="st" :class="STATUS[row.status].cls">{{ row.status === 'upcoming' && row.pay_early ? 'Next up' : STATUS[row.status].label }}</span></td>
+                <td class="r">
+                  <template v-if="!eng.isProvider">
+                    <span v-if="row.status === 'paid'" class="muted small">✓ {{ row.paid_at ? fmtDate(row.paid_at) : 'paid' }}</span>
+                    <button v-else-if="row.payable" class="sm" :class="{ primary: row.status !== 'upcoming' }" :disabled="paying === row.seq" @click="payNow(row)">
+                      {{ paying === row.seq ? 'Paying…' : row.pay_early ? 'Pay early' : 'Pay now' }}
+                    </button>
+                    <span v-else class="muted small">—</span>
+                  </template>
+                  <template v-else>
+                    <span v-if="row.status === 'paid'" class="muted small">by {{ row.paid_by || 'client' }}</span>
+                    <button v-else-if="row.status === 'overdue' || row.status === 'due'" class="sm" :disabled="reminding === row.seq" @click="remind(row)">
+                      {{ reminding === row.seq ? 'Sending…' : 'Send reminder' }}
+                    </button>
+                    <span v-else class="muted small">—</span>
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-if="notice" class="notice">{{ notice }}</p>
+      </div>
+
       <div class="card pad">
         <div class="spread" style="margin-bottom: 6px">
           <h2 style="margin: 0">Billing configuration</h2>
@@ -155,4 +240,20 @@ async function setupBilling() {
 .fees .val { font-weight: 600; }
 .tiers { margin: 2px 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
 .excl { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.twrap { overflow-x: auto; }
+.sched { width: 100%; border-collapse: collapse; }
+.sched th, .sched td { text-align: left; padding: 11px 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.sched th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; border-top: none; }
+.sched tr.over td { background: var(--risk-weak); }
+.sched .r { text-align: right; }
+.sched .mono { font-variant-numeric: tabular-nums; }
+.tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-ink); background: var(--accent-weak); padding: 1px 6px; border-radius: 5px; margin-left: 8px; vertical-align: middle; }
+.st { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.st.ok { background: var(--ok-weak); color: var(--ok); }
+.st.due { background: var(--accent-weak); color: var(--accent-ink); }
+.st.risk { background: var(--risk-weak); color: var(--risk); }
+.st.soon { background: #efece6; color: var(--muted); }
+.risktext { color: var(--risk); font-weight: 600; }
+button.sm { padding: 5px 12px; font-size: 13px; border-radius: 8px; }
+.notice { color: var(--ok); background: var(--ok-weak); padding: 9px 13px; border-radius: 9px; margin: 12px 0 0; font-size: 13px; }
 </style>

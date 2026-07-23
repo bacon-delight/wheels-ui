@@ -57,6 +57,13 @@ onMounted(load)
           <div class="num">{{ totals.awaiting_finance }}</div>
           <div class="muted small">need your review</div>
         </div>
+        <div class="tile" :class="{ danger: totals.missed_count > 0 }">
+          <div class="label">Missed dues</div>
+          <div class="num">{{ usd(totals.missed_amount) }}</div>
+          <div class="muted small">
+            {{ totals.missed_count }} payment{{ totals.missed_count === 1 ? '' : 's' }}<span v-if="totals.missed_engagements"> · {{ totals.missed_engagements }} client{{ totals.missed_engagements === 1 ? '' : 's' }}</span>
+          </div>
+        </div>
         <div class="tile">
           <div class="label">Avg / contract</div>
           <div class="num">{{ usd(totals.avg_monthly) }}</div>
@@ -88,6 +95,7 @@ onMounted(load)
                 <td>
                   <router-link :to="`/engagements/${r.engagement_id}`" class="ename">{{ r.name }}</router-link>
                   <div class="muted small">{{ r.client_name }}</div>
+                  <div v-if="r.overdue_count" class="odue">⚠ {{ r.overdue_count }} overdue · {{ usd(r.overdue_amount, 2) }}</div>
                 </td>
                 <td><StatusPill :status="r.status" /></td>
                 <td class="r">{{ r.fleet_size?.toLocaleString() ?? '—' }}</td>
@@ -108,10 +116,12 @@ onMounted(load)
 .head { margin-bottom: 22px; }
 .err { color: var(--risk); background: var(--risk-weak); padding: 10px 14px; border-radius: 10px; }
 .small { font-size: 12px; }
-.tiles { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+.tiles { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 14px; margin-bottom: 18px; }
 .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
 .tile.hero { border-left: 3px solid var(--accent); }
 .tile.attn { border-left: 3px solid var(--warn); }
+.tile.danger { border-left: 3px solid var(--risk); }
+.odue { color: var(--risk); font-size: 12px; font-weight: 600; margin-top: 4px; }
 .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
 .big { font-family: var(--serif); font-size: 34px; font-weight: 600; margin: 6px 0 2px; line-height: 1; }
 .per { font-family: var(--sans); font-size: 16px; color: var(--muted); margin-left: 4px; }

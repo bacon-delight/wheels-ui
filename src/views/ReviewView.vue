@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import ChangeReviewPanel from '../components/ChangeReviewPanel.vue'
 import ConfidenceBadge from '../components/ConfidenceBadge.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
@@ -14,6 +15,7 @@ const base = `/engagements/${eid}/documents/${did}/versions/${version}`
 
 const pages = ref([])
 const fields = ref([])
+const sid = ref(null)
 const needsReview = ref(0)
 const selected = ref(null)
 const busy = ref('')
@@ -31,9 +33,14 @@ const clone = (v) => JSON.parse(JSON.stringify(v ?? []))
 
 async function load() {
   try {
-    const [p, f] = await Promise.all([api.get(`${base}/pages`), api.get(`${base}/fields`)])
+    const [p, f, e] = await Promise.all([
+      api.get(`${base}/pages`),
+      api.get(`${base}/fields`),
+      api.get(`/engagements/${eid}`),
+    ])
     pages.value = p.data.pages
     fields.value = f.data.fields
+    sid.value = e.data.submission?.submission_id || null
     needsReview.value = f.data.needs_review_count
     const d = {}
     for (const fld of fields.value) d[fld.field_id] = clone(fld.fee_items)
@@ -139,6 +146,8 @@ onMounted(() => {
     </div>
 
     <p v-if="err" class="err">{{ err }}</p>
+
+    <ChangeReviewPanel v-if="sid" :eid="eid" :sid="sid" style="margin-bottom: 16px" />
 
     <div class="split">
       <div class="doc-pane">

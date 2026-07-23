@@ -3,13 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { api } from '../../services/api'
-import { feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import { estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eng = useEngagementStore()
 const billing = ref(null)
 const fleet = ref(100)
-const saving = ref(false)
 const paying = ref(null)
 const reminding = ref(null)
 const notice = ref('')
@@ -23,20 +22,6 @@ async function loadBilling() {
   }
 }
 onMounted(loadBilling)
-
-// Provider adjusts the fleet size -> persist it + recompute dues (reload reflows the schedule).
-async function saveFleet() {
-  const f = Math.max(1, Number(fleet.value) || 1)
-  fleet.value = f
-  saving.value = true
-  try {
-    await api.patch(`/engagements/${route.params.eid}/billing`, { fleet_size: f })
-    await loadBilling()
-  } catch {
-    /* leave the local estimate; server will reconcile on next load */
-  }
-  saving.value = false
-}
 
 const config = computed(() => billing.value?.config)
 const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
@@ -82,23 +67,7 @@ async function remind(row) {
   reminding.value = null
 }
 
-const monthlyPerUnit = (fi) => fi.amount != null && /per_(vehicle|unit).*(month)/.test(fi.unit_basis || '')
-
-// Rough recurring estimate: per-vehicle-per-month flat fees + the applicable bundled tier, × fleet.
-const estMonthly = computed(() => {
-  if (!config.value) return 0
-  let perUnit = 0
-  for (const sl of config.value.service_lines || []) {
-    for (const fi of sl.fee_items || []) {
-      if (monthlyPerUnit(fi)) perUnit += fi.amount
-      const band = (fi.tier_bands || []).find(
-        (t) => fleet.value >= t.min_units && (t.max_units == null || fleet.value <= t.max_units),
-      )
-      if (band?.amount != null) perUnit += band.amount
-    }
-  }
-  return perUnit * fleet.value
-})
+const estMonthly = computed(() => estimateMonthly(config.value?.service_lines, fleet.value))
 
 async function setupBilling() {
   await eng.action('setup-billing')
@@ -137,11 +106,7 @@ async function setupBilling() {
             <div v-if="active && months > 1" class="billed">Billed {{ BILLED[billing.frequency] }} · <strong>{{ money(perInstallment) }}</strong> per installment ({{ months }} × monthly)</div>
             <div class="muted small">Recurring per-vehicle fees for a fleet of {{ fleet }} vehicles. Usage &amp; pass-through charges bill separately.</div>
           </div>
-          <label class="fleet" v-if="eng.isProvider">
-            <span class="label">Fleet size {{ saving ? '· saving…' : '' }}</span>
-            <input type="number" v-model.number="fleet" min="1" @change="saveFleet" />
-          </label>
-          <div class="fleet" v-else><span class="label">Fleet size</span><div class="fleetval">{{ fleet }}</div></div>
+          <div class="fleet"><span class="label">Fleet size</span><div class="fleetval">{{ fleet }}</div></div>
         </div>
       </div>
 

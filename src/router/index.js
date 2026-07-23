@@ -36,6 +36,7 @@ const routes = [
       { path: '', name: 'eng-overview', component: () => import('../views/tabs/OverviewTab.vue') },
       { path: 'terms', name: 'eng-terms', component: () => import('../views/tabs/TermsTab.vue') },
       { path: 'billing', name: 'eng-billing', component: () => import('../views/tabs/BillingTab.vue') },
+      { path: 'summary', name: 'eng-summary', component: () => import('../views/tabs/SummaryTab.vue') },
       { path: 'status', name: 'eng-status', component: () => import('../views/tabs/StatusTab.vue') },
       { path: 'people', name: 'eng-people', component: () => import('../views/tabs/PeopleTab.vue') },
     ],

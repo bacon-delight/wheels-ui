@@ -1,9 +1,10 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
+import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
 import { api } from '../../services/api'
-import { feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import { estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -19,6 +20,44 @@ const changeComment = ref('')
 // provider change-loop
 const changeNote = ref('')
 const rejectNote = ref('')
+
+// provider: fleet size (finalized during approval, locked once billing is active)
+const fleetInput = ref(100)
+const savingFleet = ref(false)
+const canSetFleet = computed(
+  () => eng.isProvider && eng.reviewable && !['BILLING_SETUP', 'ACTIVE'].includes(eng.status),
+)
+const electedLines = computed(() =>
+  eng.clientTerms.flatMap((g) => g.fields.filter((f) => f.elected).map((f) => ({ fee_items: f.fee_items }))),
+)
+const estMonthly = computed(() => estimateMonthly(electedLines.value, fleetInput.value))
+watchEffect(() => {
+  const fs = eng.data?.engagement?.fleet_size
+  if (fs != null) fleetInput.value = fs
+})
+async function saveFleet() {
+  savingFleet.value = true
+  try {
+    await api.patch(`/engagements/${eid}/billing`, { fleet_size: Math.max(1, Number(fleetInput.value) || 1) })
+    await eng.load(eid)
+  } catch {
+    /* ignore; server reconciles on next load */
+  }
+  savingFleet.value = false
+}
+
+// provider: finance validation (a deliberate, independent gate — nothing is pre-approved)
+const financeMode = ref('idle') // idle | changes
+const financeChecked = ref(false)
+const financeComment = ref('')
+async function financeApprove() {
+  await eng.action('finance-approve')
+}
+async function financeReject() {
+  await eng.action('finance-request-changes', { comment: financeComment.value })
+  financeMode.value = 'idle'
+  financeComment.value = ''
+}
 
 function onUpload(type, e) {
   const f = e.target.files[0]
@@ -78,6 +117,21 @@ onMounted(() => {
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
     </div>
 
+    <!-- Change verification: did the re-uploaded terms reflect the client's request? -->
+    <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
+
+    <!-- Fleet size — finalized during approval, drives recurring dues -->
+    <div class="card pad" v-if="canSetFleet && hasTerms()">
+      <div class="spread" style="align-items: flex-start">
+        <div>
+          <h2 style="margin: 0">Fleet size</h2>
+          <p class="muted small" style="margin: 6px 0 0; max-width: 470px">Vehicles under management. Finalize this here during the approval stages — it drives the recurring dues and locks once billing is set up.</p>
+        </div>
+        <label class="fleetset"><span class="label">Vehicles {{ savingFleet ? '· saving…' : '' }}</span><input type="number" min="1" v-model.number="fleetInput" @change="saveFleet" /></label>
+      </div>
+      <div class="estline">Estimated recurring <strong>{{ money(estMonthly) }}</strong>/mo <span class="muted">at {{ fleetInput }} vehicles</span></div>
+    </div>
+
     <!-- Proposed terms summary (analyst + finance visibility) -->
     <div class="card pad" v-if="hasTerms() && eng.reviewable">
       <h2>Proposed terms</h2>
@@ -99,17 +153,38 @@ onMounted(() => {
     </div>
 
     <!-- Next-step actions -->
-    <div class="card pad" v-if="['IN_UNDERWRITING', 'PENDING_FINANCE_APPROVAL'].includes(eng.status)">
-      <h2>{{ eng.status === 'PENDING_FINANCE_APPROVAL' ? 'Finance decision' : 'Next step' }}</h2>
+    <div class="card pad" v-if="['IN_UNDERWRITING', 'FINANCE_APPROVED'].includes(eng.status)">
+      <h2>Next step</h2>
       <div v-if="eng.status === 'IN_UNDERWRITING'">
         <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to client' }}</button>
         <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>
       </div>
-      <div class="row" v-else-if="eng.status === 'PENDING_FINANCE_APPROVAL'">
-        <button class="primary" :disabled="!!eng.busy" @click="eng.action('finance-approve')">Approve (finance)</button>
-        <button :disabled="!!eng.busy" @click="eng.action('finance-request-changes', { comment: prompt('What changes?') || '' })">Request changes</button>
-      </div>
       <button v-else-if="eng.status === 'FINANCE_APPROVED'" class="primary" :disabled="!!eng.busy" @click="eng.action('setup-billing')">{{ eng.busy === 'setup-billing' ? 'Generating…' : 'Set up billing' }}</button>
+    </div>
+
+    <!-- Finance validation: an independent review after the client accepts (never pre-approved) -->
+    <div class="card pad finance" v-if="eng.status === 'PENDING_FINANCE_APPROVAL'">
+      <div class="spread" style="align-items: flex-start; margin-bottom: 4px">
+        <h2 style="margin: 0">Finance validation</h2>
+        <span class="badge info">Independent review</span>
+      </div>
+      <p class="muted small" style="margin: 0 0 12px; max-width: 620px">
+        The client has accepted these terms. Finance must independently review and validate them before billing is set up — approval is never automatic. Review the proposed terms above and the <router-link :to="{ name: 'eng-summary', params: { eid } }">negotiation summary</router-link>.
+      </p>
+      <div v-if="financeMode === 'idle'" class="stack" style="gap: 12px">
+        <label class="ack"><input type="checkbox" v-model="financeChecked" /> I have independently reviewed the client-approved terms and confirm they are correct.</label>
+        <div class="row">
+          <button class="primary" :disabled="!financeChecked || !!eng.busy" @click="financeApprove">{{ eng.busy === 'finance-approve' ? 'Approving…' : 'Approve terms (finance)' }}</button>
+          <button :disabled="!!eng.busy" @click="financeMode = 'changes'">Request changes</button>
+        </div>
+      </div>
+      <div v-else class="stack" style="gap: 10px">
+        <textarea v-model="financeComment" rows="3" placeholder="What must change before billing can be set up?" />
+        <div class="row">
+          <button class="primary" :disabled="!financeComment.trim() || !!eng.busy" @click="financeReject">{{ eng.busy === 'finance-request-changes' ? 'Sending…' : 'Send back for changes' }}</button>
+          <button :disabled="!!eng.busy" @click="financeMode = 'idle'">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <!-- Client requested changes -->
@@ -262,5 +337,11 @@ onMounted(() => {
 .tiers { margin: 2px 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
 .cond { color: var(--warn); font-size: 12px; }
 .cite { margin-top: 4px; }
+.fleetset { display: flex; flex-direction: column; gap: 6px; width: 130px; }
+.fleetset input { text-align: right; }
+.estline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.finance { border-left: 3px solid var(--accent); }
+.ack { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; cursor: pointer; }
+.ack input { margin-top: 3px; flex-shrink: 0; }
 @media (max-width: 720px) { .opts { grid-template-columns: 1fr; } }
 </style>

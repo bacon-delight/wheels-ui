@@ -125,6 +125,23 @@ export const useEngagementStore = defineStore('engagement', {
 
 export { money }
 export const prettyService = (s) => s.replace(/([a-z])([A-Z])/g, '$1 $2')
+
+// Recurring monthly estimate from billing lines (each { fee_items }) at a given fleet size:
+// per-vehicle-per-month flat fees + the applicable bundled tier band, × fleet.
+const monthlyPerUnit = (fi) => fi.amount != null && /per_(vehicle|unit).*(month)/.test(fi.unit_basis || '')
+export function estimateMonthly(lines, fleet) {
+  let perUnit = 0
+  for (const sl of lines || []) {
+    for (const fi of sl.fee_items || []) {
+      if (monthlyPerUnit(fi)) perUnit += fi.amount
+      const band = (fi.tier_bands || []).find(
+        (t) => fleet >= t.min_units && (t.max_units == null || fleet <= t.max_units),
+      )
+      if (band?.amount != null) perUnit += band.amount
+    }
+  }
+  return perUnit * fleet
+}
 export function feeLine(fi) {
   const parts = []
   if (fi.amount != null) parts.push(money(fi.amount))

@@ -107,11 +107,12 @@ export const useEngagementStore = defineStore('engagement', {
         this.busy = ''
       }
     },
-    async invite(email, role) {
+    async invite(email, name) {
       this.busy = 'invite'
       this.err = ''
       try {
-        await api.post(`/engagements/${this.eid}/invitations`, { email, role })
+        // Engagement invites are always client reviewers; provider staff live under Users.
+        await api.post(`/engagements/${this.eid}/invitations`, { email, name: name || null })
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message

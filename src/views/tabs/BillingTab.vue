@@ -9,15 +9,31 @@ const route = useRoute()
 const eng = useEngagementStore()
 const billing = ref(null)
 const fleet = ref(100)
+const saving = ref(false)
 
 async function loadBilling() {
   try {
     billing.value = (await api.get(`/engagements/${route.params.eid}/billing`)).data
+    fleet.value = billing.value?.fleet_size ?? 100
   } catch {
     billing.value = null
   }
 }
 onMounted(loadBilling)
+
+// Provider adjusts the fleet size -> persist it + recompute dues for the client & finance.
+async function saveFleet() {
+  const f = Math.max(1, Number(fleet.value) || 1)
+  fleet.value = f
+  saving.value = true
+  try {
+    const r = await api.patch(`/engagements/${route.params.eid}/billing`, { fleet_size: f })
+    if (billing.value) billing.value.monthly_recurring = r.data.monthly_recurring
+  } catch {
+    /* leave the local estimate; server will reconcile on next load */
+  }
+  saving.value = false
+}
 
 const config = computed(() => billing.value?.config)
 const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
@@ -76,7 +92,10 @@ async function setupBilling() {
             <div class="big">{{ money(estMonthly) }}<span class="muted per">/mo</span></div>
             <div class="muted small">Recurring per-vehicle fees for a fleet of {{ fleet }} vehicles. Usage &amp; pass-through charges bill separately.</div>
           </div>
-          <label class="fleet" v-if="eng.isProvider"><span class="label">Fleet size</span><input type="number" v-model.number="fleet" min="1" /></label>
+          <label class="fleet" v-if="eng.isProvider">
+            <span class="label">Fleet size {{ saving ? '· saving…' : '' }}</span>
+            <input type="number" v-model.number="fleet" min="1" @change="saveFleet" />
+          </label>
           <div class="fleet" v-else><span class="label">Fleet size</span><div class="fleetval">{{ fleet }}</div></div>
         </div>
       </div>

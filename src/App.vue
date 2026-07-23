@@ -8,6 +8,12 @@ const auth = useAuthStore()
 const route = useRoute()
 
 const bare = computed(() => ['login', 'onboarding'].includes(route.name))
+const navActive = computed(() => {
+  const p = route.path
+  if (p.startsWith('/finance')) return 'finance'
+  if (p.startsWith('/users')) return 'users'
+  return 'engagements'
+})
 const initials = computed(() =>
   (auth.name || auth.email || '?')
     .split(/[@\s.]+/)
@@ -28,8 +34,14 @@ const initials = computed(() =>
       </div>
 
       <nav class="nav">
-        <router-link to="/" class="navitem" active-class="active">
+        <router-link to="/" class="navitem" :class="{ active: navActive === 'engagements' }">
           <span class="ic">▤</span> Engagements
+        </router-link>
+        <router-link v-if="auth.isProvider" to="/finance" class="navitem" :class="{ active: navActive === 'finance' }">
+          <span class="ic">◐</span> Finance
+        </router-link>
+        <router-link v-if="auth.isProvider" to="/users" class="navitem" :class="{ active: navActive === 'users' }">
+          <span class="ic">◍</span> Users
         </router-link>
       </nav>
 

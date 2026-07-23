@@ -11,6 +11,18 @@ const routes = [
   },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   {
+    path: '/finance',
+    name: 'finance',
+    component: () => import('../views/FinanceView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
+    path: '/users',
+    name: 'users',
+    component: () => import('../views/UsersView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
     path: '/onboarding',
     name: 'onboarding',
     component: () => import('../views/OnboardingView.vue'),
@@ -53,6 +65,8 @@ router.beforeEach(async (to) => {
     // Mandatory onboarding: no authed page until name + phone are set.
     if (auth.needsOnboarding && to.name !== 'onboarding') return { name: 'onboarding' }
     if (!auth.needsOnboarding && to.name === 'onboarding') return { path: '/' }
+    // Provider-only pages (Finance, Users) are off-limits to clients.
+    if (to.meta.provider && !auth.isProvider) return { path: '/' }
   }
 })
 

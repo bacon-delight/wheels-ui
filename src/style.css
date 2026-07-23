@@ -72,6 +72,8 @@ input, select, textarea {
   color: var(--ink);
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+/* Checkboxes/radios must not inherit the full-width text-input sizing. */
+input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; border-radius: 0; }
 
 /* ---------- layout primitives ---------- */
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }

@@ -63,6 +63,19 @@ function onUpload(type, e) {
   const f = e.target.files[0]
   if (f) eng.upload(type, f)
 }
+// Replace a wrong / outdated document while under analyst review, then re-validate.
+const replaced = ref(false)
+function onReplace(type, e) {
+  const f = e.target.files[0]
+  if (f) {
+    eng.upload(type, f)
+    replaced.value = true
+  }
+}
+async function revalidate() {
+  await eng.action('reupload', { comment: 'Corrected document re-uploaded during underwriting.' })
+  replaced.value = false
+}
 async function approveSign() {
   await eng.action('client-approve', { signature: { full_name: sigName.value.trim(), place: sigPlace.value.trim() } })
   mode.value = 'idle'
@@ -119,6 +132,20 @@ onMounted(() => {
 
     <!-- Change verification: did the re-uploaded terms reflect the client's request? -->
     <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
+
+    <!-- Replace a wrong / outdated document while under review -->
+    <div class="card pad" v-if="eng.status === 'IN_UNDERWRITING'">
+      <h2>Replace a document</h2>
+      <p class="muted small" style="margin: -4px 0 12px; max-width: 640px">Uploaded the wrong file, or a re-upload didn't reflect what the client asked for? Upload the corrected document and re-run extraction — it re-validates before returning here for review.</p>
+      <div class="row">
+        <label class="btn-link">Replace MSA<input type="file" accept="application/pdf" hidden @change="onReplace('MSA', $event)" /></label>
+        <label class="btn-link">Replace MLA<input type="file" accept="application/pdf" hidden @change="onReplace('MLA', $event)" /></label>
+        <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>
+      </div>
+      <button v-if="replaced" class="primary" style="margin-top: 12px" :disabled="!!eng.busy" @click="revalidate">
+        {{ eng.busy === 'reupload' ? 'Re-validating…' : 'Re-validate & re-extract' }}
+      </button>
+    </div>
 
     <!-- Fleet size — finalized during approval, drives recurring dues -->
     <div class="card pad" v-if="canSetFleet && hasTerms()">

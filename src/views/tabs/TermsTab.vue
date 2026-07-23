@@ -120,6 +120,7 @@ onMounted(() => {
           <div class="row">
             <router-link v-if="eng.docFor(type) && eng.reviewable" class="btn-link" :to="`/engagements/${eid}/documents/${eng.docFor(type).document_id}/v/${eng.docFor(type).current_version}/review`">Review</router-link>
             <label v-if="eng.status === 'DRAFT'" class="btn-link">{{ eng.docFor(type) ? 'Replace' : 'Upload' }}<input type="file" accept="application/pdf" hidden @change="onUpload(type, $event)" /></label>
+            <label v-else-if="eng.status === 'IN_UNDERWRITING' && eng.docFor(type)" class="btn-link">Replace<input type="file" accept="application/pdf" hidden @change="onReplace(type, $event)" /></label>
             <span v-if="eng.busy === `upload-${type}`" class="muted small">uploading…</span>
           </div>
         </div>
@@ -128,24 +129,14 @@ onMounted(() => {
         {{ eng.busy === 'submit-for-processing' ? 'Starting…' : 'Run extraction' }}
       </button>
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
+      <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then re-validate.</p>
+      <button v-if="replaced && eng.status === 'IN_UNDERWRITING'" class="primary" style="margin-top: 10px" :disabled="!!eng.busy" @click="revalidate">
+        {{ eng.busy === 'reupload' ? 'Re-validating…' : 'Re-validate & re-extract' }}
+      </button>
     </div>
 
     <!-- Change verification: did the re-uploaded terms reflect the client's request? -->
     <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
-
-    <!-- Replace a wrong / outdated document while under review -->
-    <div class="card pad" v-if="eng.status === 'IN_UNDERWRITING'">
-      <h2>Replace a document</h2>
-      <p class="muted small" style="margin: -4px 0 12px; max-width: 640px">Uploaded the wrong file, or a re-upload didn't reflect what the client asked for? Upload the corrected document and re-run extraction — it re-validates before returning here for review.</p>
-      <div class="row">
-        <label class="btn-link">Replace MSA<input type="file" accept="application/pdf" hidden @change="onReplace('MSA', $event)" /></label>
-        <label class="btn-link">Replace MLA<input type="file" accept="application/pdf" hidden @change="onReplace('MLA', $event)" /></label>
-        <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>
-      </div>
-      <button v-if="replaced" class="primary" style="margin-top: 12px" :disabled="!!eng.busy" @click="revalidate">
-        {{ eng.busy === 'reupload' ? 'Re-validating…' : 'Re-validate & re-extract' }}
-      </button>
-    </div>
 
     <!-- Fleet size — finalized during approval, drives recurring dues -->
     <div class="card pad" v-if="canSetFleet && hasTerms()">

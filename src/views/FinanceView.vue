@@ -21,7 +21,6 @@ const compact = (n) =>
 
 const totals = computed(() => data.value?.totals || {})
 const funnel = computed(() => data.value?.funnel || [])
-const rows = computed(() => data.value?.engagements || [])
 const topCustomers = computed(() => (data.value?.top_customers || []).slice(0, 10))
 const topEngagements = computed(() => (data.value?.top_engagements || []).slice(0, 10))
 const atRisk = computed(() => data.value?.at_risk_customers || [])

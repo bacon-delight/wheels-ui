@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
 import { api } from '../../services/api'
-import { docLabel, estimateMonthly, feeLine, money, prettyService, STANDING_LABELS, useEngagementStore } from '../../stores/engagement'
+import { docLabel, estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -20,6 +20,8 @@ const changeComment = ref('')
 // provider change-loop
 const changeNote = ref('')
 const rejectNote = ref('')
+// Set when an agreement is replaced during underwriting; reveals the re-validate action.
+const replaced = ref(false)
 
 // provider: fleet size (finalized during approval, locked once billing is active)
 const fleetInput = ref(100)

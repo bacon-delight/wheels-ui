@@ -1,5 +1,5 @@
 <script setup>
-const props = defineProps({ value: { type: Number, default: 0 } })
+defineProps({ value: { type: Number, default: 0 } })
 const tier = (v) => (v >= 0.9 ? 'high' : v >= 0.8 ? 'med' : 'low')
 </script>
 

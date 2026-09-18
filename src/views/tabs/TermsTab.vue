@@ -286,8 +286,23 @@ onMounted(() => {
     <div class="card pad" v-if="['IN_UNDERWRITING', 'FINANCE_APPROVED'].includes(eng.status)">
       <h2>Next step</h2>
       <div v-if="eng.status === 'IN_UNDERWRITING'">
-        <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to customer' }}</button>
-        <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>
+        <!-- Nothing was recognised as an agreement, so there are no terms to approve. Saying
+             "approve all 0 terms" would send someone looking for a Review link that cannot
+             exist; the honest answer is that no agreement has been identified yet. -->
+        <template v-if="!eng.reviewDocs.length">
+          <p style="margin: 0 0 12px">
+            No lease or service agreement has been identified on this engagement, so there are
+            no billing terms to review.
+          </p>
+          <p class="muted small" style="margin: 0">
+            {{ eng.currentDocs.length ? 'The documents uploaded do not identify themselves as a Master Lease Agreement or a Master Service Agreement — a statement of work or an amendment will read this way.' : 'Nothing has been uploaded yet.' }}
+            Upload the agreement itself, and it will be read and its terms pulled out.
+          </p>
+        </template>
+        <template v-else>
+          <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to customer' }}</button>
+          <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>
+        </template>
       </div>
       <button v-else-if="eng.status === 'FINANCE_APPROVED'" class="primary" :disabled="!!eng.busy" @click="eng.action('setup-billing')">{{ eng.busy === 'setup-billing' ? 'Generating…' : 'Set up billing' }}</button>
     </div>

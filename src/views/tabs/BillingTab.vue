@@ -223,7 +223,7 @@ async function setupBilling() {
 .st.ok { background: var(--ok-weak); color: var(--ok); }
 .st.due { background: var(--accent-weak); color: var(--accent-ink); }
 .st.risk { background: var(--risk-weak); color: var(--risk); }
-.st.soon { background: #efece6; color: var(--muted); }
+.st.soon { background: #e9eef6; color: var(--muted); }
 .risktext { color: var(--risk); font-weight: 600; }
 button.sm { padding: 5px 12px; font-size: 13px; border-radius: 8px; }
 .notice { color: var(--ok); background: var(--ok-weak); padding: 9px 13px; border-radius: 9px; margin: 12px 0 0; font-size: 13px; }

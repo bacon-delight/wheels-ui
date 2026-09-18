@@ -3,7 +3,7 @@ import { computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import StatusPill from '../components/StatusPill.vue'
-import { useEngagementStore } from '../stores/engagement'
+import { SCOPE_LABELS, useEngagementStore } from '../stores/engagement'
 
 const route = useRoute()
 const eng = useEngagementStore()
@@ -13,6 +13,7 @@ const tabs = computed(() => {
     { name: 'eng-overview', label: 'Overview' },
     { name: 'eng-terms', label: 'Terms' },
     { name: 'eng-billing', label: 'Billing' },
+    { name: 'eng-vehicles', label: 'Vehicles' },
     { name: 'eng-summary', label: 'Summary' },
     { name: 'eng-status', label: 'Status' },
   ]
@@ -34,7 +35,11 @@ watch(() => route.params.eid, reload)
     <header class="ehead">
       <div>
         <h1>{{ eng.data.engagement.name }}</h1>
-        <div class="muted sub">{{ eng.data.engagement.client_name }}</div>
+        <div class="muted sub">
+          <router-link v-if="eng.customer" :to="`/customers/${eng.customer.customer_id}`">{{ eng.data.engagement.client_name }}</router-link>
+          <span v-else>{{ eng.data.engagement.client_name }}</span>
+          <span v-if="eng.data.engagement.scope"> · {{ SCOPE_LABELS[eng.data.engagement.scope] || eng.data.engagement.scope }}</span>
+        </div>
       </div>
       <StatusPill v-if="eng.status" :status="eng.status" />
     </header>

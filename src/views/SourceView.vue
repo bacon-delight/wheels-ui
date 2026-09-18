@@ -44,7 +44,7 @@ onMounted(async () => {
 .src { height: 100vh; display: flex; flex-direction: column; }
 .head { display: flex; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .small { font-size: 12px; }
-.pages { flex: 1; overflow-y: auto; padding: 24px; background: #eceae4; }
+.pages { flex: 1; overflow-y: auto; padding: 24px; background: #e6ebf3; }
 .page-wrap { position: relative; max-width: 760px; margin: 0 auto 18px; box-shadow: var(--shadow); background: #fff; border-radius: 4px; overflow: hidden; }
 .page-wrap img { display: block; width: 100%; }
 .pageno { position: absolute; top: 8px; right: 10px; font-size: 11px; color: var(--muted); background: rgba(255, 255, 255, 0.9); padding: 2px 8px; border-radius: 6px; }

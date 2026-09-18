@@ -63,7 +63,7 @@ async function invite() {
 .ava { width: 34px; height: 34px; border-radius: 9px; background: var(--accent-weak); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 12px; flex-shrink: 0; }
 .mname { font-weight: 600; }
 .pending { color: var(--warn); }
-.pill.role { background: #efece6; color: var(--muted); }
+.pill.role { background: #e9eef6; color: var(--muted); }
 .invite { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .err { color: var(--risk); font-size: 13px; margin: 10px 0 0; }
 </style>

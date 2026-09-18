@@ -1,24 +1,37 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
+import { SCOPE_LABELS } from '../stores/engagement'
 
 const auth = useAuthStore()
 const engagements = ref([])
+const customers = ref([])
 const loading = ref(true)
 const err = ref('')
 const name = ref('')
-const clientName = ref('')
+const customerId = ref('')
+const scope = ref('LEASE_AND_SERVICE')
+const filterCustomer = ref('')
 const creating = ref(false)
 const showNew = ref(false)
+
+// The flat list stays the cross-customer worklist; the filter narrows it to one customer.
+const shown = computed(() =>
+  filterCustomer.value
+    ? engagements.value.filter((e) => e.customer_id === filterCustomer.value)
+    : engagements.value,
+)
+const customerName = (id) => customers.value.find((c) => c.customer_id === id)?.legal_name
 
 async function load() {
   loading.value = true
   err.value = ''
   try {
     engagements.value = (await api.get('/engagements')).data.engagements
+    if (auth.isProvider) customers.value = (await api.get('/customers')).data.customers
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
   }
@@ -29,9 +42,14 @@ async function create() {
   creating.value = true
   err.value = ''
   try {
-    await api.post('/engagements', { name: name.value, client_name: clientName.value })
+    await api.post('/engagements', {
+      name: name.value,
+      customer_id: customerId.value,
+      scope: scope.value,
+    })
     name.value = ''
-    clientName.value = ''
+    customerId.value = ''
+    scope.value = 'LEASE_AND_SERVICE'
     showNew.value = false
     await load()
   } catch (e) {
@@ -54,27 +72,45 @@ onMounted(load)
     </div>
 
     <div v-if="showNew && auth.isProvider" class="card np">
-      <div class="row">
-        <input v-model="name" placeholder="Engagement name — e.g. Apex Field Services" />
-        <input v-model="clientName" placeholder="Client legal name — e.g. Apex Field Services LLC" />
-        <button class="primary" :disabled="!name || !clientName || creating" @click="create">
+      <div class="row wrap">
+        <input v-model="name" placeholder="Engagement name — e.g. Spring lease" style="min-width: 240px" />
+        <select v-model="customerId" style="min-width: 220px">
+          <option value="">Select customer…</option>
+          <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
+        </select>
+        <select v-model="scope" style="min-width: 180px">
+          <option v-for="(label, key) in SCOPE_LABELS" :key="key" :value="key">{{ label }}</option>
+        </select>
+        <button class="primary" :disabled="!name || !customerId || creating" @click="create">
           {{ creating ? 'Creating…' : 'Create' }}
         </button>
       </div>
+      <p class="muted small" style="margin: 10px 0 0">
+        Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both.
+        No customer yet? <router-link to="/customers">Add one first</router-link>.
+      </p>
+    </div>
+
+    <div v-if="auth.isProvider && customers.length" class="row" style="margin-bottom: 14px">
+      <select v-model="filterCustomer" style="max-width: 260px">
+        <option value="">All customers</option>
+        <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
+      </select>
     </div>
 
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="loading" class="muted">Loading…</p>
 
     <div v-else class="grid cards">
-      <router-link v-for="e in engagements" :key="e.engagement_id" :to="`/engagements/${e.engagement_id}`" class="card ecard">
+      <router-link v-for="e in shown" :key="e.engagement_id" :to="`/engagements/${e.engagement_id}`" class="card ecard">
         <div class="spread">
           <h2 style="margin: 0">{{ e.name }}</h2>
           <StatusPill v-if="e.status" :status="e.status" />
         </div>
-        <div class="muted">{{ e.client_name }}</div>
+        <div class="muted">{{ customerName(e.customer_id) || e.client_name }}</div>
+        <div class="muted small meta">{{ SCOPE_LABELS[e.scope] || e.scope }} · {{ e.fleet_size }} vehicles</div>
       </router-link>
-      <p v-if="!engagements.length" class="muted">No engagements yet.</p>
+      <p v-if="!shown.length" class="muted">{{ engagements.length ? 'No engagements for that customer.' : 'No engagements yet.' }}</p>
     </div>
   </div>
 </template>
@@ -84,8 +120,10 @@ onMounted(load)
 .head { margin-bottom: 24px; }
 .np { padding: 16px; margin-bottom: 20px; }
 .err { color: var(--risk); }
+.row.wrap { flex-wrap: wrap; }
+.meta { margin-top: 4px; }
 .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .ecard { padding: 20px; text-decoration: none; color: inherit; display: block; transition: all 0.12s; }
-.ecard:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 4px 20px rgba(209, 85, 43, 0.1); }
+.ecard:hover { text-decoration: none; border-color: var(--accent); box-shadow: 0 4px 20px rgba(6, 59, 131, 0.12); }
 .ecard h2 { font-size: 18px; }
 </style>

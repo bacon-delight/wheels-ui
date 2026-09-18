@@ -2,6 +2,20 @@ import { defineStore } from 'pinia'
 
 import { api } from '../services/api'
 
+// One source of truth for agreement labels. Previously a binary ternary duplicated in three
+// places, which silently rendered any unknown doc_type as "Vehicle Lease (MLA)".
+export const DOC_LABELS = {
+  MSA: 'Fleet Management Services (MSA)',
+  MLA: 'Vehicle Lease (MLA)',
+}
+export const docLabel = (t) => DOC_LABELS[t] || t
+
+export const SCOPE_LABELS = {
+  LEASE_ONLY: 'Lease only',
+  SERVICE_ONLY: 'Service only',
+  LEASE_AND_SERVICE: 'Lease + service',
+}
+
 const money = (n) =>
   n == null ? '' : `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
 
@@ -22,12 +36,32 @@ export const useEngagementStore = defineStore('engagement', {
     isProvider: (s) => s.data?.your_role !== 'client',
     docFor: (s) => (type) => {
       const sub = s.data?.submission
-      const id = type === 'MSA' ? sub?.msa_document_id : sub?.mla_document_id
+      // Slot map first; the legacy scalar fields keep pre-migration submissions working.
+      const id =
+        sub?.document_ids?.[type] ??
+        (type === 'MSA' ? sub?.msa_document_id : type === 'MLA' ? sub?.mla_document_id : null)
       const docs = s.data?.documents || []
       return docs.find((d) => d.document_id === id) || docs.find((d) => d.doc_type === type)
     },
+    // Which agreements this engagement needs, from its scope. Falls back to the old pair so a
+    // stale API response still renders.
+    requiredDocTypes: (s) => s.data?.required_doc_types || ['MLA', 'MSA'],
+    missingDocTypes: (s) => s.data?.missing_doc_types || [],
+    // Required types plus anything actually uploaded, so a stray extra document still shows.
+    docTypes() {
+      const sub = this.data?.submission
+      const present = Object.keys(sub?.document_ids || {})
+      return [...new Set([...this.requiredDocTypes, ...present])]
+    },
+    assignedVehicleCount: (s) => s.data?.assigned_vehicle_count ?? 0,
+    fleetSizeSource: (s) => s.data?.fleet_size_source || 'derived',
+    customer: (s) => s.data?.customer || null,
+    fleetDrift() {
+      const billed = this.data?.engagement?.fleet_size ?? 0
+      return billed !== this.assignedVehicleCount
+    },
     reviewDocs() {
-      return ['MSA', 'MLA'].map((t) => this.docFor(t)).filter(Boolean)
+      return this.docTypes.map((t) => this.docFor(t)).filter(Boolean)
     },
     totalTerms() {
       return this.reviewDocs.reduce((n, d) => n + (d.review?.total || 0), 0)
@@ -66,7 +100,7 @@ export const useEngagementStore = defineStore('engagement', {
     },
     async loadClientTerms() {
       const out = []
-      for (const type of ['MSA', 'MLA']) {
+      for (const type of this.docTypes) {
         const d = this.docFor(type)
         if (!d) continue
         try {

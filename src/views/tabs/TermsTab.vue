@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
 import { api } from '../../services/api'
-import { estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import { docLabel, estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -31,6 +31,17 @@ const electedLines = computed(() =>
   eng.clientTerms.flatMap((g) => g.fields.filter((f) => f.elected).map((f) => ({ fee_items: f.fee_items }))),
 )
 const estMonthly = computed(() => estimateMonthly(electedLines.value, fleetInput.value))
+// Clearing the override hands the number back to the vehicle inventory.
+async function useInventoryCount() {
+  savingFleet.value = true
+  try {
+    await api.patch(`/engagements/${eid}/billing`, { fleet_size: null })
+    await eng.load(eid)
+  } catch {
+    /* ignore; server reconciles on next load */
+  }
+  savingFleet.value = false
+}
 watchEffect(() => {
   const fs = eng.data?.engagement?.fleet_size
   if (fs != null) fleetInput.value = fs
@@ -109,9 +120,10 @@ onMounted(() => {
     <div class="card pad">
       <h2>Agreements</h2>
       <div class="docs">
-        <div v-for="type in ['MSA', 'MLA']" :key="type" class="doc">
+        <div v-for="type in eng.docTypes" :key="type" class="doc">
           <div class="dinfo">
             <div class="row" style="gap: 8px"><strong>{{ type }}</strong><span class="muted small">{{ eng.docFor(type)?.filename || 'Not uploaded' }}</span></div>
+            <div class="muted small">{{ docLabel(type) }}</div>
             <div v-if="eng.docFor(type)?.review?.total && eng.reviewable" class="prog">
               <div class="bar"><div class="fill" :class="{ done: eng.docFor(type).review.pct === 100 }" :style="{ width: eng.docFor(type).review.pct + '%' }" /></div>
               <span class="small" :class="eng.docFor(type).review.pct === 100 ? 'okc' : 'muted'">{{ eng.docFor(type).review.pct }}% reviewed ({{ eng.docFor(type).review.approved }}/{{ eng.docFor(type).review.total }})</span>
@@ -125,9 +137,10 @@ onMounted(() => {
           </div>
         </div>
       </div>
-      <button v-if="eng.status === 'DRAFT' && (eng.docFor('MSA') || eng.docFor('MLA'))" class="primary" style="margin-top: 14px" :disabled="!!eng.busy" @click="eng.action('submit-for-processing')">
+      <button v-if="eng.status === 'DRAFT'" class="primary" style="margin-top: 14px" :disabled="!!eng.busy || eng.missingDocTypes.length > 0" @click="eng.action('submit-for-processing')">
         {{ eng.busy === 'submit-for-processing' ? 'Starting…' : 'Run extraction' }}
       </button>
+      <p v-if="eng.status === 'DRAFT' && eng.missingDocTypes.length" class="muted small" style="margin-top: 8px">Still needed: {{ eng.missingDocTypes.join(' and ') }}.</p>
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
       <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then re-validate.</p>
       <button v-if="replaced && eng.status === 'IN_UNDERWRITING'" class="primary" style="margin-top: 10px" :disabled="!!eng.busy" @click="revalidate">
@@ -143,9 +156,14 @@ onMounted(() => {
       <div class="spread" style="align-items: flex-start">
         <div>
           <h2 style="margin: 0">Fleet size</h2>
-          <p class="muted small" style="margin: 6px 0 0; max-width: 470px">Vehicles under management. Finalize this here during the approval stages — it drives the recurring dues and locks once billing is set up.</p>
+          <p class="muted small" style="margin: 6px 0 0; max-width: 470px">Vehicles under management. This follows the inventory by default — {{ eng.assignedVehicleCount }} assigned to this engagement. Type a number to override it. Locks once billing is set up.</p>
         </div>
         <label class="fleetset"><span class="label">Vehicles {{ savingFleet ? '· saving…' : '' }}</span><input type="number" min="1" v-model.number="fleetInput" @change="saveFleet" /></label>
+      </div>
+      <div class="row" style="margin-top: 10px; gap: 8px">
+        <span class="badge" :class="eng.fleetSizeSource === 'override' ? 'warn' : 'ok'"><span class="dot" />{{ eng.fleetSizeSource === 'override' ? 'Manual override' : 'From inventory' }}</span>
+        <router-link class="btn-link" :to="`/engagements/${eid}/vehicles`">{{ eng.assignedVehicleCount }} assigned</router-link>
+        <button v-if="eng.fleetSizeSource === 'override'" class="ghost sm" :disabled="savingFleet" @click="useInventoryCount">Use inventory count</button>
       </div>
       <div class="estline">Estimated recurring <strong>{{ money(estMonthly) }}</strong>/mo <span class="muted">at {{ fleetInput }} vehicles</span></div>
     </div>
@@ -155,7 +173,7 @@ onMounted(() => {
       <h2>Proposed terms</h2>
       <p class="muted small" style="margin: -6px 0 10px">Open <strong>Review</strong> on an agreement above to see the source or correct a value.</p>
       <div v-for="grp in eng.clientTerms" :key="grp.document_id" class="termgrp">
-        <div class="tg">{{ grp.doc_type === 'MSA' ? 'Fleet Management Services (MSA)' : 'Vehicle Lease (MLA)' }}</div>
+        <div class="tg">{{ docLabel(grp.doc_type) }}</div>
         <div v-for="f in grp.fields.filter((x) => x.elected)" :key="f.field_id" class="term">
           <strong>{{ prettyService(f.service) }}</strong>
           <ul class="fees">
@@ -214,8 +232,7 @@ onMounted(() => {
           <strong>Re-upload the updated agreement</strong>
           <p class="muted small">Upload a revised document, add a note for the client, then re-validate.</p>
           <div class="row">
-            <label class="btn-link">Upload MSA<input type="file" accept="application/pdf" hidden @change="onUpload('MSA', $event)" /></label>
-            <label class="btn-link">Upload MLA<input type="file" accept="application/pdf" hidden @change="onUpload('MLA', $event)" /></label>
+            <label v-for="type in eng.docTypes" :key="type" class="btn-link">Upload {{ type }}<input type="file" accept="application/pdf" hidden @change="onUpload(type, $event)" /></label>
             <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>
           </div>
           <textarea v-model="changeNote" rows="2" placeholder="Note to the client about what changed…" style="margin-top: 10px" />
@@ -261,7 +278,7 @@ onMounted(() => {
     <!-- Documents (PDF) view -->
     <template v-else-if="view === 'documents'">
       <div v-for="g in eng.clientTerms" :key="g.document_id" class="card pad">
-        <h3 class="dtitle">{{ g.doc_type === 'MSA' ? 'Fleet Management Services (MSA)' : 'Vehicle Lease (MLA)' }}</h3>
+        <h3 class="dtitle">{{ docLabel(g.doc_type) }}</h3>
         <div class="pdf">
           <div v-for="p in docPages[g.document_id] || []" :key="p.page" class="page-wrap">
             <img :src="p.image_url" :alt="`page ${p.page}`" loading="lazy" />
@@ -276,7 +293,7 @@ onMounted(() => {
     <template v-else>
       <div class="card pad">
         <div v-for="grp in eng.clientTerms" :key="grp.document_id" class="termgrp">
-          <div class="tg">{{ grp.doc_type === 'MSA' ? 'Fleet Management Services (MSA)' : 'Vehicle Lease (MLA)' }}</div>
+          <div class="tg">{{ docLabel(grp.doc_type) }}</div>
           <div v-for="f in grp.fields" :key="f.field_id" class="term">
             <strong>{{ prettyService(f.service) }}</strong>
             <ul class="fees">
@@ -335,14 +352,14 @@ onMounted(() => {
 .btn-link { border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; }
 .btn-link:hover { border-color: var(--muted); text-decoration: none; }
 .req { background: var(--warn-weak); color: var(--warn); border-radius: 10px; padding: 12px 14px; font-style: italic; }
-.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #f7e8df); }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #e3ecf9); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
 .rbody { margin: 0; font-size: 16px; line-height: 1.5; font-style: italic; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .opt { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .dtitle { color: var(--accent-ink); text-transform: uppercase; letter-spacing: 0.05em; font-size: 12px; margin-bottom: 12px; }
-.pdf { background: #eceae4; border-radius: 10px; padding: 14px; max-height: 640px; overflow-y: auto; }
+.pdf { background: #e6ebf3; border-radius: 10px; padding: 14px; max-height: 640px; overflow-y: auto; }
 .page-wrap { position: relative; max-width: 620px; margin: 0 auto 14px; box-shadow: var(--shadow); background: #fff; border-radius: 3px; overflow: hidden; }
 .page-wrap img { display: block; width: 100%; }
 .pageno { position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); background: rgba(255, 255, 255, 0.9); padding: 1px 7px; border-radius: 5px; }

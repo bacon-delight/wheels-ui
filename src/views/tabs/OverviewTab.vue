@@ -21,7 +21,12 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: '
 const nextHint = computed(() => {
   const s = eng.status
   if (eng.isProvider) {
-    if (s === 'DRAFT') return 'Upload both agreements and run extraction.'
+    if (s === 'DRAFT') {
+      // Which agreements apply comes from the engagement's scope, not a fixed pair.
+      const missing = eng.missingDocTypes
+      if (missing.length) return `Upload the ${missing.join(' and ')} and run extraction.`
+      return 'Run extraction on the uploaded agreements.'
+    }
     if (s === 'IN_UNDERWRITING') return 'Review and approve the extracted terms, then submit to the client.'
     if (s === 'PENDING_FINANCE_APPROVAL') return 'Validate the client-approved terms as finance.'
     if (s === 'FINANCE_APPROVED') return 'Generate the billing configuration.'
@@ -52,7 +57,20 @@ const nextHint = computed(() => {
 
     <div class="tiles">
       <div class="stattile"><div class="label">Status</div><div class="val">{{ statusLabel }}</div></div>
-      <div class="stattile"><div class="label">Client</div><div class="val">{{ eng.data.engagement.client_name }}</div></div>
+      <div class="stattile">
+        <div class="label">Customer</div>
+        <div class="val">
+          <router-link v-if="eng.customer" :to="`/customers/${eng.customer.customer_id}`">{{ eng.data.engagement.client_name }}</router-link>
+          <span v-else>{{ eng.data.engagement.client_name }}</span>
+        </div>
+      </div>
+      <div class="stattile">
+        <div class="label">Vehicles</div>
+        <div class="val">
+          {{ eng.data.engagement.fleet_size }}
+          <span class="muted" style="font-weight: 400; font-size: 13px">{{ eng.fleetSizeSource === 'override' ? 'set manually' : `${eng.assignedVehicleCount} assigned` }}</span>
+        </div>
+      </div>
       <div class="stattile"><div class="label">Created</div><div class="val">{{ fmt(eng.data.engagement.created_at) }}</div></div>
       <div class="stattile">
         <div class="label">Terms approved</div>
@@ -73,7 +91,7 @@ const nextHint = computed(() => {
 .small { font-size: 12px; }
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .next { border-left: 3px solid var(--accent); }
-.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #f7e8df); }
+.response { border-left: 3px solid var(--accent); background: var(--accent-weak, #e3ecf9); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
 .rbody { margin: 0 0 12px; font-size: 16px; line-height: 1.5; font-style: italic; }
 .golink { font-weight: 600; }

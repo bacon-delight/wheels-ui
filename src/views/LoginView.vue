@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { completeNewPassword, signIn } from '../services/auth'
 import { useAuthStore } from '../stores/auth'
+import logo from '../assets/wheels-logo.png'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -59,8 +60,9 @@ async function setNewPassword() {
 
 <template>
   <div class="wrap">
+    <div class="auth">
+    <img class="logo" :src="logo" alt="Wheels" />
     <div class="card panel">
-      <div class="mark">Wheels</div>
       <h1>Contract Intelligence</h1>
 
       <template v-if="!challengeUser">
@@ -112,14 +114,17 @@ async function setNewPassword() {
 
       <p v-if="err" class="err">{{ err }}</p>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+/* Backdrop matches the logo artwork's background exactly so the mark blends into the page. */
+.wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--brand); }
+.auth { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.logo { width: 190px; height: auto; display: block; }
 .panel { padding: 32px; width: 360px; max-width: 100%; }
-.mark { font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--accent); font-size: 13px; }
-.panel h1 { margin: 6px 0 4px; }
+.panel h1 { margin: 0 0 4px; }
 .sub { margin: 0 0 16px; }
 .err { color: var(--risk); margin: 12px 0 0; font-size: 13px; }
 </style>

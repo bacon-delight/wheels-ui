@@ -11,6 +11,24 @@ const routes = [
   },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   {
+    path: '/customers',
+    name: 'customers',
+    component: () => import('../views/CustomersView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
+    path: '/customers/:cid',
+    name: 'customer',
+    component: () => import('../views/CustomerDetailView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
+    path: '/vehicles',
+    name: 'vehicles',
+    component: () => import('../views/VehiclesView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
     path: '/finance',
     name: 'finance',
     component: () => import('../views/FinanceView.vue'),
@@ -38,6 +56,7 @@ const routes = [
       { path: 'billing', name: 'eng-billing', component: () => import('../views/tabs/BillingTab.vue') },
       { path: 'summary', name: 'eng-summary', component: () => import('../views/tabs/SummaryTab.vue') },
       { path: 'status', name: 'eng-status', component: () => import('../views/tabs/StatusTab.vue') },
+      { path: 'vehicles', name: 'eng-vehicles', component: () => import('../views/tabs/VehiclesTab.vue') },
       { path: 'people', name: 'eng-people', component: () => import('../views/tabs/PeopleTab.vue') },
     ],
   },

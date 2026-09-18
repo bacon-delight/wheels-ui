@@ -35,6 +35,32 @@ const ACTION_LABEL = {
   vehicle_released: 'Vehicle released',
 }
 const actionLabel = (a) => ACTION_LABEL[a] || a
+
+// "Approve all" writes one row per term, so a single click filled the feed with a dozen
+// identical lines. Consecutive rows of the same action by the same person collapse into one.
+const PLURAL = {
+  field_approved: (n) => `${n} terms approved`,
+  field_corrected: (n) => `${n} terms corrected`,
+  vehicle_assigned: (n) => `${n} vehicle assignments`,
+}
+const grouped = computed(() => {
+  const out = []
+  for (const e of events.value) {
+    const last = out[out.length - 1]
+    const sameRun =
+      last && last.action === e.action && last.actor === (e.actor_name || e.actor_role) &&
+      !e.comment && !last.comment && PLURAL[e.action]
+    if (sameRun) {
+      last.count += 1
+      last.ts = e.ts // keep the earliest time of the run, since events arrive newest first
+    } else {
+      out.push({ ...e, actor: e.actor_name || e.actor_role, count: 1, key: e.event_id })
+    }
+  }
+  return out
+})
+const groupLabel = (g) =>
+  g.count > 1 && PLURAL[g.action] ? PLURAL[g.action](g.count) : actionLabel(g.action)
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '')
 
 onMounted(async () => {
@@ -52,7 +78,24 @@ const LABELS = {
   PENDING_FINANCE_APPROVAL: 'Awaiting finance', CHANGES_REQUESTED_FINANCE: 'Finance requested changes',
   FINANCE_APPROVED: 'Finance approved', BILLING_SETUP: 'Setting up billing', ACTIVE: 'Active',
 }
-const statusLabel = computed(() => LABELS[eng.status] || eng.status)
+// What a customer is told the engagement is doing. The internal stages are one thing to
+// them — Wheels is working on it — and naming underwriting or finance validation invites
+// questions about a process they are not part of.
+const CUSTOMER_LABELS = {
+  DRAFT: 'Being prepared', EXTRACTING: 'Being prepared', REVALIDATING: 'Being prepared',
+  IN_UNDERWRITING: 'Being prepared', VALIDATION_FAILED: 'Being prepared',
+  PENDING_CLIENT_APPROVAL: 'Ready for your review',
+  CHANGES_REQUESTED_CLIENT: 'Your changes are being made',
+  CLIENT_APPROVED: 'Being finalised', PENDING_FINANCE_APPROVAL: 'Being finalised',
+  CHANGES_REQUESTED_FINANCE: 'Being finalised', FINANCE_APPROVED: 'Being finalised',
+  BILLING_SETUP: 'Being finalised',
+  ACTIVE: 'Active',
+}
+const statusLabel = computed(() =>
+  eng.isProvider
+    ? LABELS[eng.status] || eng.status
+    : CUSTOMER_LABELS[eng.status] || 'Being prepared',
+)
 
 // A master agreement runs a fixed term; surface how much of it is left, and whether it renews.
 const expiry = computed(() => {
@@ -102,7 +145,7 @@ const nextHint = computed(() => {
         <h2 style="margin: 0">Journey</h2>
         <span class="muted small">{{ statusLabel }}</span>
       </div>
-      <JourneyStepper :status="eng.status" />
+      <JourneyStepper :status="eng.status" :for-customer="!eng.isProvider" />
     </div>
 
     <div class="tiles">
@@ -132,7 +175,9 @@ const nextHint = computed(() => {
         </div>
       </div>
       <div class="stattile"><div class="label">Created</div><div class="val">{{ fmt(eng.data.engagement.created_at) }}</div></div>
-      <div class="stattile">
+      <!-- Analyst approval progress is internal: the customer has not been shown these terms
+           yet, and a count of what Wheels has signed off means nothing to them. -->
+      <div v-if="eng.isProvider" class="stattile">
         <div class="label">Terms approved</div>
         <div class="val">{{ eng.approvedTerms }}<span class="muted" style="font-weight: 400">/{{ eng.totalTerms }}</span></div>
       </div>
@@ -146,16 +191,16 @@ const nextHint = computed(() => {
 
     <div class="card pad">
       <h2>Activity</h2>
-      <div v-if="events.length" class="timeline">
-        <div v-for="e in events" :key="e.event_id" class="ev">
+      <div v-if="grouped.length" class="timeline">
+        <div v-for="g in grouped" :key="g.key" class="ev">
           <div class="dot" />
           <div class="ebody">
             <div class="etop">
-              <strong>{{ actionLabel(e.action) }}</strong>
-              <span class="muted small">{{ when(e.ts) }}</span>
+              <strong>{{ groupLabel(g) }}</strong>
+              <span class="muted small">{{ when(g.ts) }}</span>
             </div>
             <div class="muted small">
-              by {{ e.actor_name || e.actor_role }}<span v-if="e.comment"> — “{{ e.comment }}”</span>
+              by {{ g.actor }}<span v-if="g.comment"> — “{{ g.comment }}”</span>
             </div>
           </div>
         </div>

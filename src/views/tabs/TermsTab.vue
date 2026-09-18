@@ -5,7 +5,8 @@ import { useRoute } from 'vue-router'
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
 import Dialog from '../../components/Dialog.vue'
 import { api } from '../../services/api'
-import { docLabel, estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import ExtractionMeta from '../../components/ExtractionMeta.vue'
+import { CATEGORIES, docLabel, estimateMonthly, money, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -122,7 +123,30 @@ async function sendChanges() {
   mode.value = 'idle'
   changeComment.value = ''
 }
-const hasTerms = () => eng.clientTerms.some((g) => g.fields.length)
+const hasTerms = () => eng.clientTerms.some((g) => (g.terms || []).length)
+
+const termTab = ref('pricing')
+const categoryCount = (key) => eng.termsIn(key).length
+// Pricing is grouped by the service it belongs to, which is both how the contract is laid out
+// and how a customer thinks about what they are buying.
+const pricingByProgram = computed(() => {
+  const groups = new Map()
+  for (const t of eng.termsIn('pricing')) {
+    const key = t.record?.program || 'Other'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(t)
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+})
+// One readable line per record type, so the eight non-pricing types are not blank rows.
+function termDetail(t) {
+  const r = t.record || {}
+  return (
+    r.service_level_standard || r.report_specifications || r.definition ||
+    r.description || r.task || r.detail ||
+    [r.frequency, r.minimum_threshold].filter(Boolean).join(' · ') || ''
+  )
+}
 
 async function loadPages() {
   for (const g of eng.clientTerms) {
@@ -204,6 +228,10 @@ onMounted(() => {
               <span v-if="fmtDate(d.effective_date)"> · effective {{ fmtDate(d.effective_date) }}</span>
               <span v-if="d.current_version > 1"> · revision {{ d.current_version }}</span>
             </div>
+            <!-- What reading this document cost. Hidden in plain sight: a quiet chip that
+                 opens on hover, and the only place a truncated call or a prompt cache that
+                 stopped working becomes visible. -->
+            <ExtractionMeta v-if="eng.isProvider && d.extraction_run" :run="d.extraction_run" />
             <div v-if="d.review?.total && eng.reviewable" class="prog">
               <div class="bar"><div class="fill" :class="{ done: d.review.pct === 100 }" :style="{ width: d.review.pct + '%' }" /></div>
               <span class="small" :class="d.review.pct === 100 ? 'okc' : 'muted'">{{ d.review.pct }}% reviewed ({{ d.review.approved }}/{{ d.review.total }})</span>
@@ -330,24 +358,64 @@ onMounted(() => {
       <div class="estline">Estimated recurring <strong>{{ money(estMonthly) }}</strong>/mo <span class="muted">at {{ fleetInput }} vehicles</span></div>
     </div>
 
-    <!-- Proposed terms summary (analyst + finance visibility) -->
+    <!-- Extracted terms, in the four categories a contract is read through -->
     <div class="card pad" v-if="hasTerms() && eng.reviewable">
-      <h2>Proposed terms</h2>
-      <p class="muted small" style="margin: -6px 0 10px">Open <strong>Review</strong> on an agreement above to see the source or correct a value.</p>
-      <div v-for="grp in eng.clientTerms" :key="grp.document_id" class="termgrp">
-        <div class="tg">{{ docLabel(grp.doc_type) }}</div>
-        <div v-for="f in grp.fields.filter((x) => x.elected)" :key="f.field_id" class="term">
-          <strong>{{ prettyService(f.service) }}</strong>
-          <ul class="fees">
-            <li v-for="(fi, i) in f.fee_items" :key="i">
-              <span v-if="feeLine(fi)" class="val">{{ feeLine(fi) }}</span>
-              <span v-if="fi.description" class="muted"> {{ feeLine(fi) ? '— ' : '' }}{{ fi.description }}</span>
-              <ul v-if="fi.tier_bands?.length" class="tiers"><li v-for="(t, j) in fi.tier_bands" :key="j">units {{ t.min_units }}–{{ t.max_units ?? '∞' }}: {{ money(t.amount) }}</li></ul>
-            </li>
-          </ul>
-          <div v-if="f.citations?.length" class="cite muted small">📄 p{{ f.citations[0].page }}<span v-if="f.citations[0].section_label"> · {{ f.citations[0].section_label }}</span></div>
+      <div class="spread" style="align-items: flex-start; margin-bottom: 12px">
+        <div>
+          <h2 style="margin: 0">Extracted terms</h2>
+          <p class="muted small" style="margin: 6px 0 0">
+            Open <strong>Review</strong> on an agreement above to see a term against the page it
+            came from, or to correct it.
+          </p>
         </div>
       </div>
+
+      <div class="cats">
+        <button
+          v-for="c in CATEGORIES"
+          :key="c.key"
+          class="cat"
+          :class="{ on: termTab === c.key }"
+          type="button"
+          @click="termTab = c.key"
+        >{{ c.label }} <span class="cn">{{ categoryCount(c.key) }}</span></button>
+      </div>
+
+      <!-- Pricing reads by service, because that is how the contract is organised and how the
+           customer thinks about what they buy. -->
+      <template v-if="termTab === 'pricing'">
+        <div v-for="[program, items] in pricingByProgram" :key="program" class="termgrp">
+          <div class="tg">{{ program }}</div>
+          <div v-for="t in items" :key="t.record_id" class="term row-term">
+            <div class="tmain">
+              <strong>{{ t.record?.item || t.title }}</strong>
+              <span v-if="t.record?.sub_category" class="muted small"> · {{ t.record.sub_category }}</span>
+              <div v-if="t.record?.calculation" class="muted small calc">{{ t.record.calculation }}</div>
+            </div>
+            <div class="tprice">
+              <span v-if="t.amount != null" class="val">{{ money(t.amount) }}</span>
+              <span v-else-if="t.record?.included" class="muted">Included</span>
+              <span v-if="t.record?.frequency" class="muted small"> {{ t.record.frequency }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div v-for="t in eng.termsIn(termTab)" :key="t.record_id" class="term">
+          <strong>{{ t.title }}</strong>
+          <span v-if="t.subtitle" class="muted small"> · {{ t.subtitle }}</span>
+          <div class="muted small detail">{{ termDetail(t) }}</div>
+          <div v-if="t.citations?.length" class="cite muted small">
+            📄 p{{ t.citations[0].page || '?' }}
+            <span v-if="t.citations[0].section_label"> · {{ t.citations[0].section_label }}</span>
+          </div>
+        </div>
+      </template>
+
+      <p v-if="!eng.termsIn(termTab).length" class="muted small" style="padding: 10px 0">
+        Nothing in this category for these agreements.
+      </p>
     </div>
 
     <!-- Next-step actions -->
@@ -469,21 +537,42 @@ onMounted(() => {
     <!-- Summary view -->
     <template v-else>
       <div class="card pad">
-        <div v-for="grp in eng.clientTerms" :key="grp.document_id" class="termgrp">
-          <div class="tg">{{ docLabel(grp.doc_type) }}</div>
-          <div v-for="f in grp.fields" :key="f.field_id" class="term">
-            <strong>{{ prettyService(f.service) }}</strong>
-            <ul class="fees">
-              <li v-for="(fi, i) in f.fee_items" :key="i">
-                <span v-if="feeLine(fi)" class="val">{{ feeLine(fi) }}</span>
-                <span v-if="fi.description" class="muted"> {{ feeLine(fi) ? '— ' : '' }}{{ fi.description }}</span>
-                <ul v-if="fi.tier_bands?.length" class="tiers"><li v-for="(t, j) in fi.tier_bands" :key="j">units {{ t.min_units }}–{{ t.max_units ?? '∞' }}: {{ money(t.amount) }}</li></ul>
-                <div v-for="(c, k) in fi.conditions || []" :key="k" class="cond">⚑ {{ c.description }}</div>
-              </li>
-            </ul>
-            <div v-if="f.citations?.length" class="cite muted small">📄 p{{ f.citations[0].page }}<span v-if="f.citations[0].section_label"> · {{ f.citations[0].section_label }}</span></div>
-          </div>
+        <div class="cats">
+          <button
+            v-for="c in CATEGORIES"
+            :key="c.key"
+            class="cat"
+            :class="{ on: termTab === c.key }"
+            type="button"
+            @click="termTab = c.key"
+          >{{ c.label }} <span class="cn">{{ categoryCount(c.key) }}</span></button>
         </div>
+
+        <template v-if="termTab === 'pricing'">
+          <div v-for="[program, items] in pricingByProgram" :key="program" class="termgrp">
+            <div class="tg">{{ program }}</div>
+            <div v-for="t in items" :key="t.record_id" class="term row-term">
+              <div class="tmain">
+                <strong>{{ t.record?.item || t.title }}</strong>
+                <div v-if="t.record?.calculation" class="muted small calc">{{ t.record.calculation }}</div>
+              </div>
+              <div class="tprice">
+                <span v-if="t.amount != null" class="val">{{ money(t.amount) }}</span>
+                <span v-else-if="t.record?.included" class="muted">Included</span>
+                <span v-if="t.record?.frequency" class="muted small"> {{ t.record.frequency }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <div v-for="t in eng.termsIn(termTab)" :key="t.record_id" class="term">
+            <strong>{{ t.title }}</strong>
+            <div class="muted small detail">{{ termDetail(t) }}</div>
+          </div>
+        </template>
+        <p v-if="!eng.termsIn(termTab).length" class="muted small" style="padding: 10px 0">
+          Nothing in this category.
+        </p>
       </div>
     </template>
 
@@ -553,6 +642,16 @@ onMounted(() => {
 .page-wrap { position: relative; max-width: 620px; margin: 0 auto 14px; box-shadow: var(--shadow); background: #fff; border-radius: 3px; overflow: hidden; }
 .page-wrap img { display: block; width: 100%; }
 .pageno { position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); background: rgba(255, 255, 255, 0.9); padding: 1px 7px; border-radius: 5px; }
+.cats { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.cat { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cat:hover { border-color: var(--line-strong); color: var(--ink); }
+.cat.on { border-color: var(--accent); background: var(--accent-weak); color: var(--accent-ink); font-weight: 600; }
+.cn { font-variant-numeric: tabular-nums; }
+.row-term { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.tmain { min-width: 0; }
+.tprice { text-align: right; white-space: nowrap; }
+.calc { margin-top: 3px; line-height: 1.5; }
+.detail { margin-top: 3px; line-height: 1.5; }
 .termgrp { margin-bottom: 8px; }
 .tg { font-size: 12px; color: var(--accent-ink); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin: 14px 0 8px; }
 .term { padding: 10px 0; border-bottom: 1px solid var(--line); }

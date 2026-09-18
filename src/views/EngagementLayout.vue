@@ -12,6 +12,7 @@ const tabs = computed(() => {
   const base = [
     { name: 'eng-overview', label: 'Overview' },
     { name: 'eng-terms', label: 'Terms' },
+    { name: 'eng-services', label: 'Services' },
     { name: 'eng-billing', label: 'Billing' },
     { name: 'eng-vehicles', label: 'Vehicles' },
     { name: 'eng-summary', label: 'Conversations' },

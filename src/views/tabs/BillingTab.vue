@@ -3,10 +3,18 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { api } from '../../services/api'
-import { estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import { estimateMonthly, feeLine, money, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eng = useEngagementStore()
+
+// Charges a per-vehicle estimate cannot consume, grouped by why.
+const OUTSIDE_LABELS = {
+  usage: 'As incurred (per transaction, per card, per claim)',
+  recurring_per_driver: 'Per driver, per month',
+  one_time: 'One-off',
+  credit: 'Rebates and incentives owed to you',
+}
 const billing = ref(null)
 const fleet = ref(100)
 const paying = ref(null)
@@ -24,6 +32,18 @@ async function loadBilling() {
 onMounted(loadBilling)
 
 const config = computed(() => billing.value?.config)
+const outsideEstimate = computed(() => {
+  const counts = {}
+  for (const item of config.value?.pricing_items || []) {
+    const cls = item.billing_class
+    if (!cls || cls === 'recurring') continue
+    counts[cls] = (counts[cls] || 0) + 1
+  }
+  return Object.entries(counts).map(([cls, count]) => ({
+    label: OUTSIDE_LABELS[cls] || cls,
+    count,
+  }))
+})
 const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
 const schedule = computed(() => billing.value?.schedule || [])
 const summary = computed(() => billing.value?.summary || {})
@@ -167,7 +187,7 @@ async function setupBilling() {
         </p>
 
         <div v-for="(sl, i) in config.service_lines" :key="i" class="line">
-          <strong>{{ prettyService(sl.service) }}</strong>
+          <strong>{{ sl.service }}</strong>
           <ul class="fees">
             <li v-for="(fi, j) in sl.fee_items" :key="j">
               <span v-if="feeLine(fi)" class="val">{{ feeLine(fi) }}</span>
@@ -177,17 +197,22 @@ async function setupBilling() {
           </ul>
         </div>
 
-        <div v-if="config.lease_terms" class="line">
-          <strong>Vehicle lease</strong>
+        <!-- The recurring figure above is per vehicle. Most of a contract's money is not:
+             per-card, per-transaction and per-driver charges bill as they happen, and rebates
+             are owed the other way. Naming them stops the difference reading as a bug. -->
+        <div v-if="outsideEstimate.length" class="outside">
+          <span class="label">Billed separately, not in the figure above</span>
           <ul class="fees">
-            <li v-if="config.lease_terms.admin_fee">Admin fee: {{ money(config.lease_terms.admin_fee.amount) }} · {{ (config.lease_terms.admin_fee.unit_basis || '').replace(/_/g, ' ') }}</li>
-            <li v-if="config.lease_terms.rate">Lease charge: {{ config.lease_terms.rate.basis === 'fixed' ? config.lease_terms.rate.fixed_rate_pct + '% p.a.' : (config.lease_terms.rate.index || '') + ' + ' + config.lease_terms.rate.spread_bps + ' bps' }}</li>
+            <li v-for="(g, i) in outsideEstimate" :key="i">
+              <strong>{{ g.label }}</strong>
+              <span class="muted"> — {{ g.count }} charge{{ g.count === 1 ? '' : 's' }}</span>
+            </li>
           </ul>
         </div>
 
         <div v-if="config.excluded_services?.length" class="excl">
-          <span class="label">Not billed</span>
-          <span class="muted"> {{ config.excluded_services.map(prettyService).join(', ') }}</span>
+          <span class="label">Services not in this agreement</span>
+          <span class="muted"> {{ config.excluded_services.slice(0, 8).join(', ') }}<template v-if="config.excluded_services.length > 8"> and {{ config.excluded_services.length - 8 }} more</template></span>
         </div>
       </div>
     </template>
@@ -210,6 +235,7 @@ async function setupBilling() {
 .fees { margin: 4px 0 0; padding-left: 18px; }
 .fees .val { font-weight: 600; }
 .tiers { margin: 2px 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
+.outside { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .excl { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .twrap { overflow-x: auto; }
 .sched { width: 100%; border-collapse: collapse; }

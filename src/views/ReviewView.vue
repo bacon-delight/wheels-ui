@@ -2,20 +2,25 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import ConfidenceBadge from '../components/ConfidenceBadge.vue'
+import ExtractionMeta from '../components/ExtractionMeta.vue'
 import SidePanel from '../components/SidePanel.vue'
+import TermCard from '../components/TermCard.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
-import { prettyService } from '../stores/engagement'
+import { useCatalogStore } from '../stores/catalog'
+import { CATEGORIES, prettyService } from '../stores/engagement'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const catalog = useCatalogStore()
 const { eid, did, version } = route.params
 const base = `/engagements/${eid}/documents/${did}/versions/${version}`
 
 const pages = ref([])
-const fields = ref([])
+const terms = ref([])
+const counts = ref({})
+const run = ref(null)
 const sid = ref(null)
 const needsReview = ref(0)
 const selected = ref(null)
@@ -24,15 +29,30 @@ const bulkBusy = ref(false)
 const err = ref('')
 const loaded = ref(false)
 const pageEls = ref({})
-const editing = ref({}) // field_id -> bool
-const drafts = ref({}) // field_id -> [fee_item copies]
+const tab = ref('pricing')
 
 const canApprove = computed(() => auth.isProvider)
-const pendingCount = computed(() => fields.value.filter((f) => f.elected && !f.approved).length)
+
+// A contract yields records in four categories. The tabs are how an analyst works one at a
+// time rather than scrolling past three hundred cards to reach the money.
+const tabs = computed(() =>
+  CATEGORIES.map((c) => ({
+    ...c,
+    count: counts.value[c.key] || 0,
+    flagged: terms.value.some((t) => t.category === c.key && t.needs_review),
+  })),
+)
+const shown = computed(() => terms.value.filter((t) => t.category === tab.value))
+// Approval is demanded on pricing, which is where the money is. Requiring it on all three
+// hundred records would mean nobody ever reaches the end.
+const pendingPricing = computed(
+  () => terms.value.filter((t) => t.category === 'pricing' && !t.approved).length,
+)
+const pendingInTab = computed(() => shown.value.filter((t) => !t.approved).length)
 
 // --- change verification ---
 // It used to sit inline above the split and swallow the screen. It is now a drawer behind a
-// counted trigger, and the terms it flags are marked in the field list so the finding survives
+// counted trigger, and the terms it flags are marked in the list so the finding survives
 // closing the panel.
 const review = ref(null)
 const reviewOpen = ref(false)
@@ -50,38 +70,44 @@ const VIOLATION = new Set(['partial', 'not_applied', 'unrelated'])
 const reviewItems = computed(() => review.value?.items || [])
 const violations = computed(() => reviewItems.value.filter((it) => VIOLATION.has(it.status)))
 const violationCount = computed(() => violations.value.length)
-
-// `service` arrives as "Remarketing (MLA)"; the field list keys on the bare service name.
 const bareService = (s) => (s || '').split('(')[0].trim()
-const violatedServices = computed(() => new Set(violations.value.map((it) => bareService(it.service))))
-const violationFor = (service) => violations.value.find((it) => bareService(it.service) === service)
+const violatedPrograms = computed(
+  () => new Set(violations.value.map((it) => bareService(it.service))),
+)
+const isViolated = (t) =>
+  t.category === 'pricing' && violatedPrograms.value.has(bareService(t.record?.program))
 
 async function loadReview(submissionId) {
   if (!submissionId) return
   try {
-    review.value = (await api.get(`/engagements/${eid}/submissions/${submissionId}/change-review`)).data
+    review.value = (
+      await api.get(`/engagements/${eid}/submissions/${submissionId}/change-review`)
+    ).data
   } catch {
     review.value = null
   }
 }
 
-const clone = (v) => JSON.parse(JSON.stringify(v ?? []))
-
 async function load() {
   try {
-    const [p, f, e] = await Promise.all([
+    const [p, t, e] = await Promise.all([
       api.get(`${base}/pages`),
-      api.get(`${base}/fields`),
+      api.get(`${base}/terms`),
       api.get(`/engagements/${eid}`),
     ])
     pages.value = p.data.pages
-    fields.value = f.data.fields
+    terms.value = t.data.terms
+    counts.value = t.data.counts_by_category || {}
+    needsReview.value = t.data.needs_review_count
     sid.value = e.data.submission?.submission_id || null
+    const doc = (e.data.documents || []).find((d) => d.document_id === did)
+    run.value = doc?.extraction_run || null
     if (sid.value) loadReview(sid.value)
-    needsReview.value = f.data.needs_review_count
-    const d = {}
-    for (const fld of fields.value) d[fld.field_id] = clone(fld.fee_items)
-    drafts.value = d
+    // Open on a category that actually has something in it.
+    if (!counts.value[tab.value]) {
+      tab.value = CATEGORIES.find((c) => counts.value[c.key])?.key || 'pricing'
+    }
+    catalog.load()
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
   } finally {
@@ -89,9 +115,11 @@ async function load() {
   }
 }
 
-function selectField(f) {
-  selected.value = f
-  const page = f.citations?.[0]?.page
+function selectTerm(t) {
+  // Cards collapse by default and only the selected one opens its editor: three hundred live
+  // textareas is not a usable screen.
+  selected.value = selected.value?.record_id === t.record_id ? null : t
+  const page = t.citations?.[0]?.page
   if (page && pageEls.value[page]) {
     pageEls.value[page].scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -111,42 +139,28 @@ function rectStyle(b) {
   }
 }
 
-const money = (n) =>
-  n == null ? '' : `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-
-function startEdit(f) {
-  editing.value = { ...editing.value, [f.field_id]: true }
-}
-function cancelEdit(f) {
-  drafts.value[f.field_id] = clone(f.fee_items)
-  editing.value = { ...editing.value, [f.field_id]: false }
-}
-
-async function patchField(f, payload, tag) {
-  busy.value = tag
+async function patchTerm(t, payload) {
+  busy.value = t.record_id
   err.value = ''
   try {
-    await api.patch(`${base}/fields/${f.service}/${f.field_id}`, payload)
-    editing.value = { ...editing.value, [f.field_id]: false }
+    await api.patch(`${base}/terms/${t.category}/${t.record_id}`, payload)
     await load()
-    if (selected.value?.field_id === f.field_id) selected.value = null
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
   }
   busy.value = ''
 }
 
-const approve = (f) => patchField(f, { approved: true }, f.field_id)
-const saveCorrection = (f) =>
-  patchField(f, { fee_items: drafts.value[f.field_id], approved: true }, f.field_id)
+const approveTerm = (t) => patchTerm(t, { approved: true })
+const saveTerm = (t, record) => patchTerm(t, { record, approved: true })
 
-async function approveAll() {
+async function approveTab() {
+  // One request rather than one per term. The serial loop this replaces was three hundred
+  // round trips at the volume a real contract produces.
   bulkBusy.value = true
   err.value = ''
   try {
-    for (const f of fields.value.filter((x) => x.elected && !x.approved)) {
-      await api.patch(`${base}/fields/${f.service}/${f.field_id}`, { approved: true })
-    }
+    await api.post(`${base}/terms:approve`, {}, { params: { category: tab.value } })
     await load()
   } catch (e) {
     err.value = e.response?.data?.detail || e.message
@@ -169,6 +183,7 @@ onMounted(() => {
     <div class="rhead">
       <router-link :to="`/engagements/${eid}`" class="muted">← Back to engagement</router-link>
       <div class="row">
+        <ExtractionMeta :run="run" />
         <button
           v-if="review && review.applicable"
           class="sm crtrigger"
@@ -180,15 +195,8 @@ onMounted(() => {
           <span class="countbadge" :class="{ zero: violationCount === 0 }">{{ violationCount }}</span>
         </button>
         <span v-if="needsReview" class="badge low">{{ needsReview }} need review</span>
-        <span v-else class="badge high">All reviewed</span>
-        <button
-          v-if="canApprove && pendingCount"
-          class="primary sm"
-          :disabled="bulkBusy"
-          @click="approveAll"
-        >
-          {{ bulkBusy ? 'Approving…' : `Approve all (${pendingCount})` }}
-        </button>
+        <span v-else-if="loaded" class="badge high">All reviewed</span>
+        <span v-if="pendingPricing" class="muted small">{{ pendingPricing }} priced terms to approve</span>
       </div>
     </div>
 
@@ -207,89 +215,56 @@ onMounted(() => {
         </p>
       </div>
 
-      <div class="fields-pane">
-        <div
-          v-for="f in fields"
-          :key="f.field_id"
-          class="fcard"
-          :class="{ sel: selected?.field_id === f.field_id, flagged: f.needs_review, off: !f.elected, edit: editing[f.field_id], violation: violatedServices.has(f.service) }"
-          @click="selectField(f)"
-        >
-          <div class="spread">
-            <div class="row">
-              <strong :class="{ vterm: violatedServices.has(f.service) }">{{ f.service }}</strong>
-              <span v-if="!f.elected" class="pill off-pill">Not elected</span>
-            </div>
-            <div class="row">
-              <span v-if="editing[f.field_id]" class="badge low">editing</span>
-              <span v-else-if="f.needs_review" class="badge low">review</span>
-              <span v-else-if="f.approved" class="badge high">approved</span>
-              <ConfidenceBadge :value="f.confidence" />
-            </div>
-          </div>
-
-          <div v-if="violationFor(f.service)" class="vnote">
-            <div class="vhead">
-              <strong>{{ CR_STATUS[violationFor(f.service).status]?.label || violationFor(f.service).status }}</strong>
-              <button class="link sm" type="button" @click.stop="reviewOpen = true">Details</button>
-            </div>
-            <div v-if="violationFor(f.service).requested"><span class="muted">Requested:</span> {{ violationFor(f.service).requested }}</div>
-            <div v-if="violationFor(f.service).delivered"><span class="muted">Delivered:</span> {{ violationFor(f.service).delivered }}</div>
-          </div>
-
-          <div v-if="f.notes" class="muted small">{{ f.notes }}</div>
-
-          <!-- Editable fee items: pre-filled inputs, disabled until "Correct". -->
-          <div v-for="(fi, i) in drafts[f.field_id] || []" :key="i" class="feeedit">
-            <span class="ftype">{{ fi.fee_type }}</span>
-            <textarea
-              v-model="fi.description"
-              :disabled="!editing[f.field_id]"
-              rows="2"
-              class="fi-desc"
-              @click.stop
-            />
-            <div class="fi-row" v-if="editing[f.field_id] || fi.amount != null || fi.rate_pct != null || fi.unit_basis">
-              <label v-if="editing[f.field_id] || fi.amount != null">$<input type="number" step="0.01" v-model.number="fi.amount" :disabled="!editing[f.field_id]" @click.stop /></label>
-              <label v-if="editing[f.field_id] || fi.rate_pct != null">%<input type="number" step="0.01" v-model.number="fi.rate_pct" :disabled="!editing[f.field_id]" @click.stop /></label>
-              <label class="unit" v-if="editing[f.field_id] || fi.unit_basis">unit<input v-model="fi.unit_basis" :disabled="!editing[f.field_id]" @click.stop /></label>
-            </div>
-            <ul v-if="fi.tier_bands?.length" class="tiers">
-              <li v-for="(t, j) in fi.tier_bands" :key="j">
-                units {{ t.min_units }}–{{ t.max_units ?? '∞' }}: {{ money(t.amount) }}
-              </li>
-            </ul>
-            <div v-for="(c, k) in fi.conditions || []" :key="k" class="cond">⚑ {{ c.description }}</div>
-          </div>
-
-          <div v-if="f.citations?.length" class="cite muted small">
-            📄 p{{ f.citations[0].page }}<span v-if="f.citations[0].section_label"> · {{ f.citations[0].section_label }}</span>
-            <em v-if="f.citations[0].quote"> — “{{ f.citations[0].quote }}”</em>
-          </div>
-
-          <div v-if="canApprove && f.elected" class="actions">
-            <template v-if="!editing[f.field_id]">
-              <button v-if="!f.approved" class="primary sm" :disabled="busy === f.field_id" @click.stop="approve(f)">
-                {{ busy === f.field_id ? '…' : 'Approve' }}
-              </button>
-              <button class="sm" @click.stop="startEdit(f)">Correct</button>
-            </template>
-            <template v-else>
-              <button class="primary sm" :disabled="busy === f.field_id" @click.stop="saveCorrection(f)">
-                {{ busy === f.field_id ? 'Saving…' : 'Save & approve' }}
-              </button>
-              <button class="sm" @click.stop="cancelEdit(f)">Cancel</button>
-            </template>
-          </div>
+      <div class="terms-pane">
+        <div class="tabs">
+          <button
+            v-for="t in tabs"
+            :key="t.key"
+            class="tab"
+            :class="{ on: tab === t.key }"
+            type="button"
+            @click="tab = t.key; selected = null"
+          >
+            {{ t.label }}
+            <span class="tcount">{{ t.count }}</span>
+            <span v-if="t.flagged" class="tdot" title="terms needing review" />
+          </button>
         </div>
 
-        <p v-if="!fields.length && !loaded" class="muted" style="padding: 20px">Loading…</p>
-        <p v-else-if="!fields.length && !canApprove" class="muted" style="padding: 20px">
-          Approved terms will appear here once the provider submits them for your review.
-        </p>
-        <p v-else-if="!fields.length" class="muted" style="padding: 20px">
-          No extracted terms yet — run extraction on this document.
-        </p>
+        <div class="tbar">
+          <span class="muted small">{{ shown.length }} term{{ shown.length === 1 ? '' : 's' }}</span>
+          <button
+            v-if="canApprove && pendingInTab"
+            class="primary sm"
+            :disabled="bulkBusy"
+            @click="approveTab"
+          >
+            {{ bulkBusy ? 'Approving…' : `Approve all ${pendingInTab}` }}
+          </button>
+        </div>
+
+        <div class="tlist">
+          <div v-for="t in shown" :key="t.record_id" :class="{ violated: isViolated(t) }">
+            <TermCard
+              :term="t"
+              :selected="selected?.record_id === t.record_id"
+              :editable="canApprove"
+              :catalog-options="catalog.options"
+              :busy="busy"
+              @select="selectTerm"
+              @approve="approveTerm"
+              @save="saveTerm"
+            />
+          </div>
+
+          <p v-if="!terms.length && !loaded" class="muted" style="padding: 20px">Loading…</p>
+          <p v-else-if="!terms.length" class="muted" style="padding: 20px">
+            No terms extracted yet — run extraction on this document.
+          </p>
+          <p v-else-if="!shown.length" class="muted" style="padding: 20px">
+            Nothing in this category for this agreement.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -333,8 +308,9 @@ onMounted(() => {
 
 <style scoped>
 .review { height: calc(100vh - 58px); display: flex; flex-direction: column; }
-.rhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--line); background: #fff; }
+.rhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--line); background: #fff; gap: 12px; }
 .err { color: var(--risk); padding: 8px 20px; }
+.small { font-size: 12px; }
 .split { flex: 1; display: grid; grid-template-columns: 1.2fr 1fr; min-height: 0; }
 .doc-pane { overflow-y: auto; background: #dfe6f0; padding: 16px; }
 .page-wrap { position: relative; max-width: 720px; margin: 0 auto 16px; box-shadow: var(--shadow); background: #fff; }
@@ -342,16 +318,25 @@ onMounted(() => {
 .hl { position: absolute; background: rgba(246, 199, 68, 0.38); outline: 2px solid var(--accent); border-radius: 2px; animation: pulse 1.2s ease-in-out 2; }
 @keyframes pulse { 0%,100% { background: rgba(246,199,68,0.28); } 50% { background: rgba(246,199,68,0.55); } }
 .pageno { position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.85); padding: 1px 6px; border-radius: 4px; }
-.fields-pane { overflow-y: auto; padding: 14px; background: var(--bg); }
-.fcard { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; }
-.fcard:hover { border-color: var(--accent); }
-.fcard.sel { border-left-color: var(--accent); box-shadow: var(--shadow); }
-.fcard.flagged { border-left-color: var(--risk); }
-.fcard.edit { border-left-color: var(--accent); background: #f6f9fe; cursor: default; }
-.fcard.off { opacity: 0.72; }
-.off-pill { background: #eef0f2; color: var(--muted); }
 
-/* --- change verification trigger + flagged terms --- */
+.terms-pane { display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+/* The tab strip stays put while the list scrolls: the categories are how you navigate. */
+.tabs { display: flex; gap: 2px; padding: 8px 12px 0; background: #fff; border-bottom: 1px solid var(--line); }
+.tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 8px 12px 9px; cursor: pointer; font: inherit; font-size: 13px;
+  color: var(--muted); font-weight: 500;
+}
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--accent-ink); border-bottom-color: var(--accent); font-weight: 600; }
+.tcount { font-size: 11px; color: var(--muted); background: var(--panel-2, #eef1f5); border-radius: 999px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.tab.on .tcount { background: var(--accent-weak); color: var(--accent-ink); }
+.tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.tbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+.tlist { flex: 1; overflow-y: auto; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
+.violated :deep(.tcard) { border-left: 3px solid var(--warn); background: var(--warn-weak); }
+
 .crtrigger { display: inline-flex; align-items: center; gap: 8px; }
 .crtrigger.hasflag { border-color: var(--warn); color: var(--warn); }
 /* A count, not a state: filled rather than tinted, tabular figures, circular under two digits. */
@@ -361,17 +346,8 @@ onMounted(() => {
   font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
 }
 .countbadge.zero { background: var(--muted); }
-.fcard.violation { border-left-color: var(--warn); background: var(--warn-weak); }
-/* Colour never marks alone: the term keeps a label and the card keeps its badge. */
+/* Colour never marks alone: the term keeps a label beside it. */
 .vterm { background: var(--warn-weak); color: var(--warn); padding: 1px 5px; border-radius: 6px; }
-.vnote {
-  position: relative; margin: 8px 0 4px; padding: 10px 12px; border-radius: 10px;
-  background: var(--warn-weak); font-size: 12.5px; line-height: 1.55; overflow: hidden;
-}
-.vnote::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--warn); }
-.vhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
-.vhead strong { color: var(--warn); }
-.link { background: none; border: none; padding: 0; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
 .crask { background: var(--panel-2); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
 .crask p { margin: 4px 0 0; font-style: italic; }
 .croverall { margin: 0; font-size: 15px; line-height: 1.55; }
@@ -380,19 +356,5 @@ onMounted(() => {
 .crhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
 .crbody { font-size: 13px; line-height: 1.6; }
 .crnote { color: var(--ink-soft); margin-top: 4px; }
-.small { font-size: 12px; }
-.feeedit { margin: 8px 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
-.ftype { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--accent); font-weight: 600; }
-.fi-desc { width: 100%; margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; resize: vertical; }
-.fi-row { display: flex; gap: 8px; margin-top: 6px; }
-.fi-row label { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); flex: 1; }
-.fi-row input { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
-.fi-row label.unit { flex: 1.4; }
-/* Disabled inputs read as clean read-only values, not greyed-out form fields. */
-input:disabled, textarea:disabled { background: #f7f9fa; color: var(--ink); border-color: transparent; cursor: default; -webkit-text-fill-color: var(--ink); opacity: 1; }
-.tiers { margin: 4px 0; padding-left: 16px; color: var(--muted); font-size: 12px; }
-.cond { color: var(--warn); font-size: 12px; margin-top: 2px; }
-.cite { margin-top: 6px; }
-.actions { margin-top: 10px; display: flex; gap: 8px; }
 @media (max-width: 820px) { .split { grid-template-columns: 1fr; } }
 </style>

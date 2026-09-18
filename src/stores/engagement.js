@@ -10,6 +10,74 @@ export const DOC_LABELS = {
 }
 export const docLabel = (t) => DOC_LABELS[t] || t
 
+// The four categories a contract is read through, and the nine record types beneath them.
+export const CATEGORIES = [
+  { key: 'pricing', label: 'Pricing' },
+  { key: 'sla', label: 'SLA' },
+  { key: 'reporting', label: 'Reporting' },
+  { key: 'misc', label: 'Misc' },
+]
+export const INFO_TYPE_LABELS = {
+  pricing_item: 'Pricing item',
+  sla_item: 'Service level',
+  reporting_requirement: 'Report',
+  definition: 'Definition',
+  online_tool: 'Online tool',
+  responsibility: 'Responsibility',
+  signature: 'Signature',
+  information_section: 'Information',
+  uncategorised: 'Other section',
+}
+export const infoTypeLabel = (t) => INFO_TYPE_LABELS[t] || t
+
+// How a term's own fields are shown and edited. One spec per record type replaces a form that
+// only ever knew how to render a fee.
+export const FIELD_SPECS = {
+  pricing_item: [
+    ['program', 'Program'],
+    ['item', 'Item'],
+    ['sub_category', 'Applies to'],
+    ['frequency', 'Frequency'],
+    ['amount', 'Amount', 'money'],
+    ['calculation', 'Calculation', 'long'],
+  ],
+  sla_item: [
+    ['category', 'Category'],
+    ['service_level_standard', 'Standard', 'long'],
+    ['frequency', 'Measured'],
+    ['minimum_threshold', 'Minimum threshold'],
+    ['calculation', 'Calculation', 'long'],
+    ['example', 'Example', 'long'],
+  ],
+  reporting_requirement: [
+    ['report_name', 'Report'],
+    ['report_specifications', 'Contents', 'long'],
+    ['frequency', 'Frequency'],
+  ],
+  definition: [['term', 'Term'], ['definition', 'Definition', 'long']],
+  online_tool: [['tool_name', 'Tool'], ['platform', 'Platform'], ['description', 'Description', 'long']],
+  responsibility: [
+    ['task', 'Task', 'long'],
+    ['responsible_party', 'Owed by'],
+    ['topic', 'Topic'],
+    ['timing', 'Timing'],
+    ['frequency', 'Frequency'],
+  ],
+  signature: [['company', 'Company'], ['name', 'Name'], ['title', 'Title'], ['signed_date_raw', 'Signed']],
+  information_section: [['topic', 'Topic'], ['description', 'Description', 'long']],
+  uncategorised: [['item', 'Section'], ['detail', 'Detail', 'long']],
+}
+
+// How confidently a term was attached to a catalog service. The last two are what an analyst
+// is being asked to settle.
+export const MATCH_LABELS = {
+  exact: 'Matched',
+  alias: 'Matched',
+  normalised: 'Matched',
+  fuzzy: 'Close match',
+  unmatched: 'Not in catalog',
+}
+
 export const SCOPE_LABELS = {
   LEASE_ONLY: 'Lease only',
   SERVICE_ONLY: 'Service only',
@@ -94,6 +162,9 @@ export const useEngagementStore = defineStore('engagement', {
       s.data?.your_role !== 'client' &&
       ['DRAFT', 'IN_UNDERWRITING', 'VALIDATION_FAILED', 'CHANGES_REQUESTED_CLIENT',
         'CHANGES_REQUESTED_FINANCE'].includes(s.data?.submission?.status),
+    // Extracted terms, grouped the way the interface reads them.
+    termCounts: (s) => s.data?.term_counts || {},
+    coverage: (s) => s.data?.coverage_summary || null,
     assignedVehicleCount: (s) => s.data?.assigned_vehicle_count ?? 0,
     fleetSizeSource: (s) => s.data?.fleet_size_source || 'derived',
     customer: (s) => s.data?.customer || null,
@@ -155,20 +226,52 @@ export const useEngagementStore = defineStore('engagement', {
       }
     },
     async loadClientTerms() {
+      // One request per agreement, returning every category with its counts, rather than one
+      // request per service line.
       const out = []
-      for (const type of this.docTypes) {
-        const d = this.docFor(type)
-        if (!d) continue
+      for (const d of this.currentDocs) {
         try {
           const r = await api.get(
-            `/engagements/${this.eid}/documents/${d.document_id}/versions/${d.current_version}/fields`,
+            `/engagements/${this.eid}/documents/${d.document_id}/versions/${d.current_version}/terms`,
           )
-          out.push({ doc_type: type, document_id: d.document_id, version: d.current_version, fields: r.data.fields })
+          out.push({
+            doc_type: d.doc_type,
+            document_id: d.document_id,
+            version: d.current_version,
+            filename: d.filename,
+            terms: r.data.terms,
+            counts: r.data.counts_by_category,
+            needsReview: r.data.needs_review_count,
+            approved: r.data.approved_count,
+            total: r.data.total,
+          })
         } catch {
-          /* ignore per-doc */
+          /* one unreadable agreement must not blank the others */
         }
       }
       this.clientTerms = out
+    },
+    termsIn(category) {
+      return this.clientTerms.flatMap((g) =>
+        (g.terms || [])
+          .filter((t) => t.category === category)
+          .map((t) => ({ ...t, doc_type: g.doc_type, filename: g.filename })),
+      )
+    },
+    async approveCategory(documentId, version, category) {
+      this.busy = `approve-${category}`
+      this.err = ''
+      try {
+        await api.post(
+          `/engagements/${this.eid}/documents/${documentId}/versions/${version}/terms:approve`,
+          {},
+          { params: category ? { category } : {} },
+        )
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
     },
     async action(verb, body) {
       this.busy = verb

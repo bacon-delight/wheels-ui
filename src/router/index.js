@@ -25,6 +25,12 @@ const routes = [
     meta: { auth: true, provider: true },
   },
   {
+    path: '/services',
+    name: 'services',
+    component: () => import('../views/ServicesView.vue'),
+    meta: { auth: true, provider: true },
+  },
+  {
     path: '/vehicles',
     name: 'vehicles',
     component: () => import('../views/VehiclesView.vue'),
@@ -57,6 +63,7 @@ const routes = [
     children: [
       { path: '', name: 'eng-overview', component: () => import('../views/tabs/OverviewTab.vue') },
       { path: 'terms', name: 'eng-terms', component: () => import('../views/tabs/TermsTab.vue') },
+      { path: 'services', name: 'eng-services', component: () => import('../views/tabs/ServicesTab.vue') },
       { path: 'billing', name: 'eng-billing', component: () => import('../views/tabs/BillingTab.vue') },
       { path: 'summary', name: 'eng-summary', component: () => import('../views/tabs/SummaryTab.vue') },
       { path: 'vehicles', name: 'eng-vehicles', component: () => import('../views/tabs/VehiclesTab.vue') },

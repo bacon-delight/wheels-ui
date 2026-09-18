@@ -68,6 +68,11 @@ export const useEngagementStore = defineStore('engagement', {
     supersededDocs: (s) => (s.data?.documents || []).filter((d) => d.standing === 'SUPERSEDED'),
     unclassifiedDocs: (s) =>
       (s.data?.documents || []).filter((d) => !d.doc_type || d.doc_type === 'UNKNOWN'),
+    // Agreements nothing has read at their current version — the only ones extraction touches.
+    pendingDocs: (s) =>
+      (s.data?.documents || []).filter(
+        (d) => d.standing !== 'SUPERSEDED' && d.needs_extraction,
+      ),
     reviewDocs() {
       return this.currentDocs.filter((d) => d.doc_type && d.doc_type !== 'UNKNOWN')
     },
@@ -155,6 +160,18 @@ export const useEngagementStore = defineStore('engagement', {
             method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file,
           })
         }
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
+    },
+    // Extraction is per document: only a new or replaced agreement needs reading.
+    async extractDocument(documentId) {
+      this.busy = `extract-${documentId}`
+      this.err = ''
+      try {
+        await api.post(`/engagements/${this.eid}/documents/${documentId}:extract`)
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message

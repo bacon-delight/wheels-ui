@@ -20,8 +20,6 @@ const changeComment = ref('')
 // provider change-loop
 const changeNote = ref('')
 const rejectNote = ref('')
-// Set when an agreement is replaced during underwriting; reveals the re-validate action.
-const replaced = ref(false)
 
 // provider: fleet size (finalized during approval, locked once billing is active)
 const fleetInput = ref(100)
@@ -81,7 +79,6 @@ function onUpload(e) {
 function onReplace(documentId, e) {
   const f = e.target.files?.[0]
   if (f) {
-    replaced.value = true
     eng.uploadFiles([f], documentId)
   }
   e.target.value = ''
@@ -89,10 +86,6 @@ function onReplace(documentId, e) {
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
 
-async function revalidate() {
-  await eng.action('reupload', { comment: 'Corrected document re-uploaded during underwriting.' })
-  replaced.value = false
-}
 async function approveSign() {
   await eng.action('client-approve', { signature: { full_name: sigName.value.trim(), place: sigPlace.value.trim() } })
   mode.value = 'idle'
@@ -164,6 +157,13 @@ onMounted(() => {
             </div>
           </div>
           <div class="row">
+            <span v-if="['EXTRACTING', 'REVALIDATING'].includes(eng.status) && d.needs_extraction" class="muted small">reading…</span>
+            <button
+              v-else-if="eng.isProvider && d.needs_extraction"
+              class="primary sm"
+              :disabled="!!eng.busy"
+              @click="eng.extractDocument(d.document_id)"
+            >{{ eng.busy === `extract-${d.document_id}` ? 'Starting…' : 'Extract' }}</button>
             <router-link v-if="eng.reviewable && d.doc_type !== 'UNKNOWN'" class="btn-link" :to="`/engagements/${eid}/documents/${d.document_id}/v/${d.current_version}/review`">Review</router-link>
             <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="btn-link">
               Replace<input type="file" accept="application/pdf" hidden @change="(e) => onReplace(d.document_id, e)" />
@@ -193,15 +193,12 @@ onMounted(() => {
         </div>
       </details>
 
-      <button v-if="eng.status === 'DRAFT'" class="primary" style="margin-top: 14px" :disabled="!!eng.busy || !eng.currentDocs.length" @click="eng.action('submit-for-processing')">
-        {{ eng.busy === 'submit-for-processing' ? 'Starting…' : 'Run extraction' }}
-      </button>
-      <p v-if="eng.status === 'DRAFT' && !eng.currentDocs.length" class="muted small" style="margin-top: 8px">Upload at least one agreement to run extraction.</p>
+      <p v-if="!eng.currentDocs.length" class="muted small" style="margin-top: 12px">Upload an agreement to get started.</p>
+      <p v-else-if="eng.pendingDocs.length && !['EXTRACTING', 'REVALIDATING'].includes(eng.status)" class="muted small" style="margin-top: 12px">
+        {{ eng.pendingDocs.length }} agreement{{ eng.pendingDocs.length === 1 ? '' : 's' }} still to read. Extraction runs per agreement, so the ones already read keep their reviewed terms.
+      </p>
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
-      <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then re-validate.</p>
-      <button v-if="replaced && eng.status === 'IN_UNDERWRITING'" class="primary" style="margin-top: 10px" :disabled="!!eng.busy" @click="revalidate">
-        {{ eng.busy === 'reupload' ? 'Re-validating…' : 'Re-validate & re-extract' }}
-      </button>
+      <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then <strong>Extract</strong> that agreement.</p>
     </div>
 
     <!-- Change verification: did the re-uploaded terms reflect the customer's request? -->

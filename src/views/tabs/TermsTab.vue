@@ -232,8 +232,9 @@ onMounted(() => {
         <p v-if="!eng.currentDocs.length" class="muted small" style="padding: 8px 0">No agreements uploaded yet.</p>
       </div>
 
-      <!-- Superseded agreements came with the engagement for the record; they never feed
-           terms, extraction or billing. -->
+      <!-- Earlier agreements are kept for the record and feed neither terms nor extraction.
+           The one exception is an agreement this amendment displaces, which goes on billing
+           until the new terms are approved — hence the section opens during an amendment. -->
       <details v-if="eng.supersededDocs.length" class="prior" :open="eng.liveDuringAmendment">
         <summary>{{ eng.supersededDocs.length }} earlier agreement{{ eng.supersededDocs.length === 1 ? '' : 's' }} on file</summary>
         <div v-for="d in eng.supersededDocs" :key="d.document_id" class="doc" :class="{ billing: stillBilling(d) }">

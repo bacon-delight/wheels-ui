@@ -15,7 +15,6 @@ const loading = ref(true)
 const err = ref('')
 const name = ref('')
 const customerId = ref('')
-const scope = ref('LEASE_AND_SERVICE')
 const filterCustomer = ref('')
 const creating = ref(false)
 const showNew = ref(false)
@@ -82,7 +81,6 @@ const usd = (n) =>
 const customerName = (id) => customers.value.find((c) => c.customer_id === id)?.legal_name
 const customerOptions = computed(() => customers.value.map((c) => ({ value: c.customer_id, label: c.legal_name })))
 const customerFilterOptions = computed(() => [{ value: '', label: 'All customers' }, ...customerOptions.value])
-const scopeOptions = Object.entries(SCOPE_LABELS).map(([value, label]) => ({ value, label }))
 
 async function load() {
   loading.value = true
@@ -100,14 +98,9 @@ async function create() {
   creating.value = true
   err.value = ''
   try {
-    await api.post('/engagements', {
-      name: name.value,
-      customer_id: customerId.value,
-      scope: scope.value,
-    })
+    await api.post('/engagements', { name: name.value, customer_id: customerId.value })
     name.value = ''
     customerId.value = ''
-    scope.value = 'LEASE_AND_SERVICE'
     showNew.value = false
     await load()
   } catch (e) {
@@ -183,7 +176,7 @@ onMounted(load)
                   <router-link v-if="e.customer_id" :to="`/customers/${e.customer_id}`" class="muted">{{ customerName(e.customer_id) || e.client_name }}</router-link>
                   <span v-else class="muted">{{ e.client_name }}</span>
                 </td>
-                <td class="muted">{{ SCOPE_LABELS[e.scope] || e.scope }}</td>
+                <td class="muted">{{ SCOPE_LABELS[e.scope] || 'Pending upload' }}</td>
                 <td><StatusPill v-if="e.status" :status="e.status" /></td>
                 <td class="r mono">{{ (e.fleet_size || 0).toLocaleString() }}</td>
                 <td class="r mono">{{ e.monthly_recurring ? usd(e.monthly_recurring) : '—' }}</td>
@@ -202,7 +195,7 @@ onMounted(load)
     <Dialog
       :open="showNew"
       title="New engagement"
-      subtitle="Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both."
+      subtitle="Create it first, then upload the agreements. We read each one to work out whether it is a lease or a service agreement, and which is in force."
       @close="showNew = false"
     >
       <label class="fld">
@@ -212,10 +205,6 @@ onMounted(load)
       <label class="fld" style="margin-top: 14px">
         <span class="label">Customer</span>
         <Dropdown v-model="customerId" :options="customerOptions" placeholder="Select customer…" />
-      </label>
-      <label class="fld" style="margin-top: 14px">
-        <span class="label">Scope</span>
-        <Dropdown v-model="scope" :options="scopeOptions" />
       </label>
       <p class="muted small" style="margin: 14px 0 0">
         No customer yet? <router-link to="/customers">Add one first</router-link>.

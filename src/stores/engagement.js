@@ -15,6 +15,8 @@ export const SCOPE_LABELS = {
   SERVICE_ONLY: 'Service only',
   LEASE_AND_SERVICE: 'Lease + service',
 }
+// An agreement is either the one in force or kept for the record.
+export const STANDING_LABELS = { CURRENT: 'In force', SUPERSEDED: 'Superseded' }
 
 const money = (n) =>
   n == null ? '' : `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
@@ -60,8 +62,14 @@ export const useEngagementStore = defineStore('engagement', {
       const billed = this.data?.engagement?.fleet_size ?? 0
       return billed !== this.assignedVehicleCount
     },
+    // An engagement holds every agreement ever uploaded for it. Only the ones in force are
+    // under negotiation; superseded ones are kept for the record.
+    currentDocs: (s) => (s.data?.documents || []).filter((d) => d.standing !== 'SUPERSEDED'),
+    supersededDocs: (s) => (s.data?.documents || []).filter((d) => d.standing === 'SUPERSEDED'),
+    unclassifiedDocs: (s) =>
+      (s.data?.documents || []).filter((d) => !d.doc_type || d.doc_type === 'UNKNOWN'),
     reviewDocs() {
-      return this.docTypes.map((t) => this.docFor(t)).filter(Boolean)
+      return this.currentDocs.filter((d) => d.doc_type && d.doc_type !== 'UNKNOWN')
     },
     totalTerms() {
       return this.reviewDocs.reduce((n, d) => n + (d.review?.total || 0), 0)
@@ -126,20 +134,45 @@ export const useEngagementStore = defineStore('engagement', {
         this.busy = ''
       }
     },
-    async upload(type, file) {
-      this.busy = `upload-${type}`
+    // Uploaders no longer choose a type; the parse worker reads it off the document. Passing a
+    // documentId means "this revises that agreement" rather than "this is another one".
+    async uploadFiles(files, documentId = null) {
+      const list = Array.from(files || [])
+      if (!list.length) return
+      this.busy = 'upload'
       this.err = ''
       try {
-        const { data: p } = await api.post(`/engagements/${this.eid}/documents:presign`, {
-          doc_type: type, filename: file.name, submission_id: this.submission.submission_id,
-        })
-        await fetch(p.upload_url, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file })
+        for (const file of list) {
+          const body = {
+            filename: file.name,
+            submission_id: this.submission.submission_id,
+            ...(documentId ? { document_id: documentId } : {}),
+          }
+          const { data: p } = await api.post(
+            `/engagements/${this.eid}/documents:presign`, body,
+          )
+          await fetch(p.upload_url, {
+            method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file,
+          })
+        }
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
-      } finally {
-        this.busy = ''
       }
+      this.busy = ''
+    },
+    async setDocType(documentId, docType) {
+      this.busy = `type-${documentId}`
+      this.err = ''
+      try {
+        await api.put(`/engagements/${this.eid}/documents/${documentId}/type`, {
+          doc_type: docType,
+        })
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
     },
     async invite(email, name) {
       this.busy = 'invite'

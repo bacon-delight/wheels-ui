@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import Dialog from '../components/Dialog.vue'
-import Dropdown from '../components/Dropdown.vue'
 import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { SCOPE_LABELS } from '../stores/engagement'
@@ -14,8 +13,7 @@ const loading = ref(true)
 const err = ref('')
 const showNew = ref(false)
 const creating = ref(false)
-const form = ref({ name: '', scope: 'LEASE_AND_SERVICE' })
-const scopeOptions = Object.entries(SCOPE_LABELS).map(([value, label]) => ({ value, label }))
+const form = ref({ name: '' })
 
 const customer = computed(() => data.value?.customer)
 const engagements = computed(() => data.value?.engagements || [])
@@ -48,9 +46,8 @@ async function createEngagement() {
     await api.post('/engagements', {
       name: form.value.name.trim(),
       customer_id: route.params.cid,
-      scope: form.value.scope,
     })
-    form.value = { name: '', scope: 'LEASE_AND_SERVICE' }
+    form.value = { name: '' }
     showNew.value = false
     await load()
     err.value = ''
@@ -97,7 +94,7 @@ watch(() => route.params.cid, load)
         <router-link v-for="e in engagements" :key="e.engagement_id" class="erow" :to="`/engagements/${e.engagement_id}`">
           <div class="einfo">
             <strong>{{ e.name }}</strong>
-            <span class="muted small">{{ SCOPE_LABELS[e.scope] || e.scope }} · {{ e.fleet_size }} vehicles · created {{ (e.created_at || '').slice(0, 10) }}</span>
+            <span class="muted small">{{ SCOPE_LABELS[e.scope] || 'Pending upload' }} · {{ e.fleet_size }} vehicles · created {{ (e.created_at || '').slice(0, 10) }}</span>
           </div>
           <StatusPill :status="e.status" />
         </router-link>
@@ -143,16 +140,12 @@ watch(() => route.params.cid, load)
       <Dialog
         :open="showNew"
         title="New engagement"
-        :subtitle="`For ${customer.legal_name}. Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both.`"
+        :subtitle="`For ${customer.legal_name}. Create it first, then upload the agreements — we work out the type of each and which is in force.`"
         @close="showNew = false"
       >
         <label class="fld">
           <span class="label">Engagement name</span>
           <input v-model="form.name" placeholder="Spring lease — 40 units" @keyup.enter="createEngagement" />
-        </label>
-        <label class="fld" style="margin-top: 14px">
-          <span class="label">Scope</span>
-          <Dropdown v-model="form.scope" :options="scopeOptions" />
         </label>
         <template #footer>
           <span class="sp" />

@@ -3,8 +3,9 @@ import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
+import Dropdown from '../../components/Dropdown.vue'
 import { api } from '../../services/api'
-import { docLabel, estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
+import { docLabel, estimateMonthly, feeLine, money, prettyService, STANDING_LABELS, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -70,19 +71,27 @@ async function financeReject() {
   financeComment.value = ''
 }
 
-function onUpload(type, e) {
-  const f = e.target.files[0]
-  if (f) eng.upload(type, f)
+function onUpload(e) {
+  const files = e.target.files
+  if (files?.length) eng.uploadFiles(files)
+  e.target.value = ''
 }
-// Replace a wrong / outdated document while under analyst review, then re-validate.
-const replaced = ref(false)
-function onReplace(type, e) {
-  const f = e.target.files[0]
+// Naming the document marks this as a revision of that agreement rather than another one.
+function onReplace(documentId, e) {
+  const f = e.target.files?.[0]
   if (f) {
-    eng.upload(type, f)
     replaced.value = true
+    eng.uploadFiles([f], documentId)
   }
+  e.target.value = ''
 }
+const fmtDate = (iso) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
+const typeOptions = [
+  { value: 'MLA', label: 'Vehicle Lease (MLA)' },
+  { value: 'MSA', label: 'Fleet Management Services (MSA)' },
+]
+
 async function revalidate() {
   await eng.action('reupload', { comment: 'Corrected document re-uploaded during underwriting.' })
   replaced.value = false
@@ -118,29 +127,84 @@ onMounted(() => {
   <!-- ============ PROVIDER ============ -->
   <div v-if="eng.isProvider" class="stack">
     <div class="card pad">
-      <h2>Agreements</h2>
+      <div class="spread" style="align-items: flex-start">
+        <div>
+          <h2 style="margin: 0">Agreements</h2>
+          <p class="muted small" style="margin: 6px 0 0; max-width: 62ch">
+            Upload whatever you have. We read each document to tell a lease agreement from a
+            service one, and the newest of each type is the one in force.
+          </p>
+        </div>
+        <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="primary btn-file">
+          ＋ Upload agreements
+          <input type="file" accept="application/pdf" multiple hidden @change="onUpload" />
+        </label>
+      </div>
+
+      <p v-if="eng.busy === 'upload'" class="muted small" style="margin-top: 10px">Uploading…</p>
+
       <div class="docs">
-        <div v-for="type in eng.docTypes" :key="type" class="doc">
+        <div v-for="d in eng.currentDocs" :key="d.document_id" class="doc">
           <div class="dinfo">
-            <div class="row" style="gap: 8px"><strong>{{ type }}</strong><span class="muted small">{{ eng.docFor(type)?.filename || 'Not uploaded' }}</span></div>
-            <div class="muted small">{{ docLabel(type) }}</div>
-            <div v-if="eng.docFor(type)?.review?.total && eng.reviewable" class="prog">
-              <div class="bar"><div class="fill" :class="{ done: eng.docFor(type).review.pct === 100 }" :style="{ width: eng.docFor(type).review.pct + '%' }" /></div>
-              <span class="small" :class="eng.docFor(type).review.pct === 100 ? 'okc' : 'muted'">{{ eng.docFor(type).review.pct }}% reviewed ({{ eng.docFor(type).review.approved }}/{{ eng.docFor(type).review.total }})</span>
+            <div class="row" style="gap: 8px">
+              <strong>{{ d.doc_type === 'UNKNOWN' ? 'Unclassified' : d.doc_type }}</strong>
+              <!-- An unclassified document governs nothing until we know what it is. -->
+              <span v-if="d.doc_type !== 'UNKNOWN'" class="badge ok"><span class="dot" />In force</span>
+              <span v-else class="badge warn"><span class="dot" />Needs a type</span>
+              <span class="muted small">{{ d.filename }}</span>
+            </div>
+            <div class="muted small">
+              {{ d.doc_type === 'UNKNOWN' ? 'Reading the document to work out its type…' : docLabel(d.doc_type) }}
+              <span v-if="fmtDate(d.effective_date)"> · effective {{ fmtDate(d.effective_date) }}</span>
+              <span v-if="d.current_version > 1"> · revision {{ d.current_version }}</span>
+            </div>
+            <div v-if="d.review?.total && eng.reviewable" class="prog">
+              <div class="bar"><div class="fill" :class="{ done: d.review.pct === 100 }" :style="{ width: d.review.pct + '%' }" /></div>
+              <span class="small" :class="d.review.pct === 100 ? 'okc' : 'muted'">{{ d.review.pct }}% reviewed ({{ d.review.approved }}/{{ d.review.total }})</span>
             </div>
           </div>
           <div class="row">
-            <router-link v-if="eng.docFor(type) && eng.reviewable" class="btn-link" :to="`/engagements/${eid}/documents/${eng.docFor(type).document_id}/v/${eng.docFor(type).current_version}/review`">Review</router-link>
-            <label v-if="eng.status === 'DRAFT'" class="btn-link">{{ eng.docFor(type) ? 'Replace' : 'Upload' }}<input type="file" accept="application/pdf" hidden @change="onUpload(type, $event)" /></label>
-            <label v-else-if="eng.status === 'IN_UNDERWRITING' && eng.docFor(type)" class="btn-link">Replace<input type="file" accept="application/pdf" hidden @change="onReplace(type, $event)" /></label>
-            <span v-if="eng.busy === `upload-${type}`" class="muted small">uploading…</span>
+            <div v-if="eng.isProvider && d.doc_type === 'UNKNOWN'" style="width: 200px">
+              <Dropdown
+                model-value=""
+                :options="typeOptions"
+                placeholder="Set type…"
+                @update:model-value="(v) => eng.setDocType(d.document_id, v)"
+              />
+            </div>
+            <router-link v-if="eng.reviewable && d.doc_type !== 'UNKNOWN'" class="btn-link" :to="`/engagements/${eid}/documents/${d.document_id}/v/${d.current_version}/review`">Review</router-link>
+            <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="btn-link">
+              Replace<input type="file" accept="application/pdf" hidden @change="(e) => onReplace(d.document_id, e)" />
+            </label>
           </div>
         </div>
+        <p v-if="!eng.currentDocs.length" class="muted small" style="padding: 8px 0">No agreements uploaded yet.</p>
       </div>
-      <button v-if="eng.status === 'DRAFT'" class="primary" style="margin-top: 14px" :disabled="!!eng.busy || eng.missingDocTypes.length > 0" @click="eng.action('submit-for-processing')">
+
+      <!-- Superseded agreements came with the engagement for the record; they never feed
+           terms, extraction or billing. -->
+      <details v-if="eng.supersededDocs.length" class="prior">
+        <summary>{{ eng.supersededDocs.length }} superseded agreement{{ eng.supersededDocs.length === 1 ? '' : 's' }} on file</summary>
+        <div v-for="d in eng.supersededDocs" :key="d.document_id" class="doc">
+          <div class="dinfo">
+            <div class="row" style="gap: 8px">
+              <strong>{{ d.doc_type === 'UNKNOWN' ? 'Unclassified' : d.doc_type }}</strong>
+              <span class="pill off-pill">Superseded</span>
+              <span class="muted small">{{ d.filename }}</span>
+            </div>
+            <div class="muted small">
+              <span v-if="fmtDate(d.effective_date)">effective {{ fmtDate(d.effective_date) }}</span>
+              <span v-else>no effective date found</span>
+              · kept for the record, not billed
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <button v-if="eng.status === 'DRAFT'" class="primary" style="margin-top: 14px" :disabled="!!eng.busy || !eng.currentDocs.length" @click="eng.action('submit-for-processing')">
         {{ eng.busy === 'submit-for-processing' ? 'Starting…' : 'Run extraction' }}
       </button>
-      <p v-if="eng.status === 'DRAFT' && eng.missingDocTypes.length" class="muted small" style="margin-top: 8px">Still needed: {{ eng.missingDocTypes.join(' and ') }}.</p>
+      <p v-if="eng.status === 'DRAFT' && !eng.currentDocs.length" class="muted small" style="margin-top: 8px">Upload at least one agreement to run extraction.</p>
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
       <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then re-validate.</p>
       <button v-if="replaced && eng.status === 'IN_UNDERWRITING'" class="primary" style="margin-top: 10px" :disabled="!!eng.busy" @click="revalidate">
@@ -232,7 +296,7 @@ onMounted(() => {
           <strong>Re-upload the updated agreement</strong>
           <p class="muted small">Upload a revised document, add a note for the customer, then re-validate.</p>
           <div class="row">
-            <label v-for="type in eng.docTypes" :key="type" class="btn-link">Upload {{ type }}<input type="file" accept="application/pdf" hidden @change="onUpload(type, $event)" /></label>
+            <label class="btn-link">Upload revised agreement<input type="file" accept="application/pdf" multiple hidden @change="onUpload" /></label>
             <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>
           </div>
           <textarea v-model="changeNote" rows="2" placeholder="Note to the client about what changed…" style="margin-top: 10px" />
@@ -339,6 +403,11 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.btn-file { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
+.prior { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.prior summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.prior .doc { opacity: 0.85; }
+.off-pill { background: #eef0f2; color: var(--muted); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .pad { padding: 20px 22px; }
 .small { font-size: 12px; }
 .docs { display: grid; gap: 10px; }

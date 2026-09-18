@@ -2,10 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import ChangeReviewPanel from '../components/ChangeReviewPanel.vue'
 import ConfidenceBadge from '../components/ConfidenceBadge.vue'
+import SidePanel from '../components/SidePanel.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
+import { prettyService } from '../stores/engagement'
 
 const route = useRoute()
 const router = useRouter()
@@ -29,6 +30,41 @@ const drafts = ref({}) // field_id -> [fee_item copies]
 const canApprove = computed(() => auth.isProvider)
 const pendingCount = computed(() => fields.value.filter((f) => f.elected && !f.approved).length)
 
+// --- change verification ---
+// It used to sit inline above the split and swallow the screen. It is now a drawer behind a
+// counted trigger, and the terms it flags are marked in the field list so the finding survives
+// closing the panel.
+const review = ref(null)
+const reviewOpen = ref(false)
+
+const CR_STATUS = {
+  applied: { label: 'Applied', cls: 'ok' },
+  partial: { label: 'Partial', cls: 'warn' },
+  not_applied: { label: 'Not applied', cls: 'risk' },
+  unrelated: { label: 'Not requested', cls: 'info' },
+  new: { label: 'Changed', cls: 'info' },
+}
+// A violation is a request the re-upload did not honour, or a change nobody asked for.
+const VIOLATION = new Set(['partial', 'not_applied', 'unrelated'])
+
+const reviewItems = computed(() => review.value?.items || [])
+const violations = computed(() => reviewItems.value.filter((it) => VIOLATION.has(it.status)))
+const violationCount = computed(() => violations.value.length)
+
+// `service` arrives as "Remarketing (MLA)"; the field list keys on the bare service name.
+const bareService = (s) => (s || '').split('(')[0].trim()
+const violatedServices = computed(() => new Set(violations.value.map((it) => bareService(it.service))))
+const violationFor = (service) => violations.value.find((it) => bareService(it.service) === service)
+
+async function loadReview(submissionId) {
+  if (!submissionId) return
+  try {
+    review.value = (await api.get(`/engagements/${eid}/submissions/${submissionId}/change-review`)).data
+  } catch {
+    review.value = null
+  }
+}
+
 const clone = (v) => JSON.parse(JSON.stringify(v ?? []))
 
 async function load() {
@@ -41,6 +77,7 @@ async function load() {
     pages.value = p.data.pages
     fields.value = f.data.fields
     sid.value = e.data.submission?.submission_id || null
+    if (sid.value) loadReview(sid.value)
     needsReview.value = f.data.needs_review_count
     const d = {}
     for (const fld of fields.value) d[fld.field_id] = clone(fld.fee_items)
@@ -132,6 +169,16 @@ onMounted(() => {
     <div class="rhead">
       <router-link :to="`/engagements/${eid}`" class="muted">← Back to engagement</router-link>
       <div class="row">
+        <button
+          v-if="review && review.applicable"
+          class="sm crtrigger"
+          :class="{ hasflag: violationCount > 0 }"
+          type="button"
+          @click="reviewOpen = true"
+        >
+          Change verification
+          <span class="countbadge" :class="{ zero: violationCount === 0 }">{{ violationCount }}</span>
+        </button>
         <span v-if="needsReview" class="badge low">{{ needsReview }} need review</span>
         <span v-else class="badge high">All reviewed</span>
         <button
@@ -146,8 +193,6 @@ onMounted(() => {
     </div>
 
     <p v-if="err" class="err">{{ err }}</p>
-
-    <ChangeReviewPanel v-if="sid" :eid="eid" :sid="sid" in-review />
 
     <div class="split">
       <div class="doc-pane">
@@ -167,12 +212,12 @@ onMounted(() => {
           v-for="f in fields"
           :key="f.field_id"
           class="fcard"
-          :class="{ sel: selected?.field_id === f.field_id, flagged: f.needs_review, off: !f.elected, edit: editing[f.field_id] }"
+          :class="{ sel: selected?.field_id === f.field_id, flagged: f.needs_review, off: !f.elected, edit: editing[f.field_id], violation: violatedServices.has(f.service) }"
           @click="selectField(f)"
         >
           <div class="spread">
             <div class="row">
-              <strong>{{ f.service }}</strong>
+              <strong :class="{ vterm: violatedServices.has(f.service) }">{{ f.service }}</strong>
               <span v-if="!f.elected" class="pill off-pill">Not elected</span>
             </div>
             <div class="row">
@@ -181,6 +226,15 @@ onMounted(() => {
               <span v-else-if="f.approved" class="badge high">approved</span>
               <ConfidenceBadge :value="f.confidence" />
             </div>
+          </div>
+
+          <div v-if="violationFor(f.service)" class="vnote">
+            <div class="vhead">
+              <strong>{{ CR_STATUS[violationFor(f.service).status]?.label || violationFor(f.service).status }}</strong>
+              <button class="link sm" type="button" @click.stop="reviewOpen = true">Details</button>
+            </div>
+            <div v-if="violationFor(f.service).requested"><span class="muted">Requested:</span> {{ violationFor(f.service).requested }}</div>
+            <div v-if="violationFor(f.service).delivered"><span class="muted">Delivered:</span> {{ violationFor(f.service).delivered }}</div>
           </div>
 
           <div v-if="f.notes" class="muted small">{{ f.notes }}</div>
@@ -238,6 +292,42 @@ onMounted(() => {
         </p>
       </div>
     </div>
+
+    <SidePanel
+      :open="reviewOpen"
+      title="Change verification"
+      subtitle="What the re-uploaded agreement actually changed, against what the client asked for."
+      @close="reviewOpen = false"
+    >
+      <template v-if="review">
+        <div v-if="review.requested" class="crask">
+          <div class="label">Client asked</div>
+          <p>“{{ review.requested }}”</p>
+        </div>
+        <p v-if="review.overall" class="croverall">{{ review.overall }}</p>
+
+        <div v-if="violationCount" class="label" style="margin: 18px 0 8px">
+          {{ violationCount }} term{{ violationCount === 1 ? '' : 's' }} needing attention
+        </div>
+        <div
+          v-for="(it, i) in reviewItems"
+          :key="i"
+          class="cri"
+          :class="{ flag: VIOLATION.has(it.status) }"
+        >
+          <div class="crhead">
+            <strong :class="{ vterm: VIOLATION.has(it.status) }">{{ prettyService(it.service) }}</strong>
+            <span class="badge" :class="CR_STATUS[it.status]?.cls || 'info'">{{ CR_STATUS[it.status]?.label || it.status }}</span>
+          </div>
+          <div class="crbody">
+            <div v-if="it.requested"><span class="muted">Requested:</span> {{ it.requested }}</div>
+            <div v-if="it.delivered"><span class="muted">Delivered:</span> {{ it.delivered }}</div>
+            <div v-if="it.note" class="crnote">{{ it.note }}</div>
+          </div>
+        </div>
+        <p v-if="!reviewItems.length" class="muted">No field-level differences detected between the two versions.</p>
+      </template>
+    </SidePanel>
   </div>
 </template>
 
@@ -260,6 +350,36 @@ onMounted(() => {
 .fcard.edit { border-left-color: var(--accent); background: #f6f9fe; cursor: default; }
 .fcard.off { opacity: 0.72; }
 .off-pill { background: #eef0f2; color: var(--muted); }
+
+/* --- change verification trigger + flagged terms --- */
+.crtrigger { display: inline-flex; align-items: center; gap: 8px; }
+.crtrigger.hasflag { border-color: var(--warn); color: var(--warn); }
+/* A count, not a state: filled rather than tinted, tabular figures, circular under two digits. */
+.countbadge {
+  min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+  background: var(--risk); color: #fff; font-size: 11px; line-height: 19px;
+  font-weight: 600; text-align: center; font-variant-numeric: tabular-nums;
+}
+.countbadge.zero { background: var(--muted); }
+.fcard.violation { border-left-color: var(--warn); background: var(--warn-weak); }
+/* Colour never marks alone: the term keeps a label and the card keeps its badge. */
+.vterm { background: var(--warn-weak); color: var(--warn); padding: 1px 5px; border-radius: 6px; }
+.vnote {
+  position: relative; margin: 8px 0 4px; padding: 10px 12px; border-radius: 10px;
+  background: var(--warn-weak); font-size: 12.5px; line-height: 1.55; overflow: hidden;
+}
+.vnote::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--warn); }
+.vhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 4px; }
+.vhead strong { color: var(--warn); }
+.link { background: none; border: none; padding: 0; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.crask { background: var(--panel-2); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.crask p { margin: 4px 0 0; font-style: italic; }
+.croverall { margin: 0; font-size: 15px; line-height: 1.55; }
+.cri { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; }
+.cri.flag { border-color: var(--warn); background: var(--warn-weak); }
+.crhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.crbody { font-size: 13px; line-height: 1.6; }
+.crnote { color: var(--ink-soft); margin-top: 4px; }
 .small { font-size: 12px; }
 .feeedit { margin: 8px 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }
 .ftype { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--accent); font-weight: 600; }

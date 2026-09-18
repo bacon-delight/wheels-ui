@@ -3,8 +3,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
+  // Landing is role-dependent: providers get the finance dashboard, clients their engagements.
+  { path: '/', name: 'home', redirect: () => ({ name: 'engagements' }), meta: { auth: true } },
   {
-    path: '/',
+    path: '/engagements',
     name: 'engagements',
     component: () => import('../views/EngagementsView.vue'),
     meta: { auth: true },
@@ -29,11 +31,13 @@ const routes = [
     meta: { auth: true, provider: true },
   },
   {
-    path: '/finance',
-    name: 'finance',
+    path: '/dashboard',
+    name: 'dashboard',
     component: () => import('../views/FinanceView.vue'),
     meta: { auth: true, provider: true },
   },
+  // Keep the old path working for anyone with it bookmarked.
+  { path: '/finance', redirect: { name: 'dashboard' } },
   {
     path: '/users',
     name: 'users',
@@ -55,7 +59,6 @@ const routes = [
       { path: 'terms', name: 'eng-terms', component: () => import('../views/tabs/TermsTab.vue') },
       { path: 'billing', name: 'eng-billing', component: () => import('../views/tabs/BillingTab.vue') },
       { path: 'summary', name: 'eng-summary', component: () => import('../views/tabs/SummaryTab.vue') },
-      { path: 'status', name: 'eng-status', component: () => import('../views/tabs/StatusTab.vue') },
       { path: 'vehicles', name: 'eng-vehicles', component: () => import('../views/tabs/VehiclesTab.vue') },
       { path: 'people', name: 'eng-people', component: () => import('../views/tabs/PeopleTab.vue') },
     ],
@@ -84,9 +87,11 @@ router.beforeEach(async (to) => {
     if (!auth.profileChecked) await auth.fetchProfile()
     // Mandatory onboarding: no authed page until name + phone are set.
     if (auth.needsOnboarding && to.name !== 'onboarding') return { name: 'onboarding' }
-    if (!auth.needsOnboarding && to.name === 'onboarding') return { path: '/' }
-    // Provider-only pages (Finance, Users) are off-limits to clients.
-    if (to.meta.provider && !auth.isProvider) return { path: '/' }
+    if (!auth.needsOnboarding && to.name === 'onboarding') return { name: 'home' }
+    // Providers land on the dashboard; clients have no dashboard, so they get their list.
+    if (to.name === 'home') return { name: auth.isProvider ? 'dashboard' : 'engagements' }
+    // Provider-only pages are off-limits to clients.
+    if (to.meta.provider && !auth.isProvider) return { name: 'engagements' }
   }
 })
 

@@ -12,9 +12,9 @@ const bare = computed(() => ['login', 'onboarding'].includes(route.name))
 const navActive = computed(() => {
   const p = route.path
   // New branches go before the catch-all, or every unknown path highlights Engagements.
+  if (p.startsWith('/dashboard') || p.startsWith('/finance')) return 'dashboard'
   if (p.startsWith('/customers')) return 'customers'
   if (p.startsWith('/vehicles')) return 'vehicles'
-  if (p.startsWith('/finance')) return 'finance'
   if (p.startsWith('/users')) return 'users'
   return 'engagements'
 })
@@ -37,17 +37,17 @@ const initials = computed(() =>
       </div>
 
       <nav class="nav">
+        <router-link v-if="auth.isProvider" to="/dashboard" class="navitem" :class="{ active: navActive === 'dashboard' }">
+          <span class="ic">◐</span> Dashboard
+        </router-link>
         <router-link v-if="auth.isProvider" to="/customers" class="navitem" :class="{ active: navActive === 'customers' }">
           <span class="ic">◈</span> Customers
         </router-link>
-        <router-link to="/" class="navitem" :class="{ active: navActive === 'engagements' }">
+        <router-link to="/engagements" class="navitem" :class="{ active: navActive === 'engagements' }">
           <span class="ic">▤</span> Engagements
         </router-link>
         <router-link v-if="auth.isProvider" to="/vehicles" class="navitem" :class="{ active: navActive === 'vehicles' }">
           <span class="ic">⬢</span> Vehicles
-        </router-link>
-        <router-link v-if="auth.isProvider" to="/finance" class="navitem" :class="{ active: navActive === 'finance' }">
-          <span class="ic">◐</span> Finance
         </router-link>
         <router-link v-if="auth.isProvider" to="/users" class="navitem" :class="{ active: navActive === 'users' }">
           <span class="ic">◍</span> Users

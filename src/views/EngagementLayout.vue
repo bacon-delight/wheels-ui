@@ -14,10 +14,10 @@ const tabs = computed(() => {
     { name: 'eng-terms', label: 'Terms' },
     { name: 'eng-billing', label: 'Billing' },
     { name: 'eng-vehicles', label: 'Vehicles' },
-    { name: 'eng-summary', label: 'Summary' },
-    { name: 'eng-status', label: 'Status' },
+    { name: 'eng-summary', label: 'Conversations' },
   ]
-  if (eng.isProvider) base.push({ name: 'eng-people', label: 'Clients' })
+  // Status merged into Overview; the journey and its activity answer the same question.
+  if (eng.isProvider) base.push({ name: 'eng-people', label: 'Users' })
   return base
 })
 
@@ -30,7 +30,7 @@ watch(() => route.params.eid, reload)
 
 <template>
   <div class="wrap" v-if="eng.data">
-    <router-link to="/" class="back muted">← All engagements</router-link>
+    <router-link to="/engagements" class="back muted">← All engagements</router-link>
 
     <header class="ehead">
       <div>

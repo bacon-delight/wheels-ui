@@ -1,12 +1,49 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import JourneyStepper from '../../components/JourneyStepper.vue'
+import { api } from '../../services/api'
 import { useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eng = useEngagementStore()
+const events = ref([])
+
+// Activity lives here rather than in its own tab: the journey and what happened on it are the
+// same question, and splitting them meant two clicks to answer it.
+const ACTION_LABEL = {
+  submit_for_processing: 'Submitted for extraction',
+  pipeline_done: 'Extraction complete',
+  submit_to_client: 'Submitted to client',
+  client_approve: 'Client approved terms',
+  client_request_changes: 'Client requested changes',
+  reupload: 'Document re-uploaded',
+  sanity_pass: 'Sanity checks passed',
+  sanity_fail: 'Sanity checks failed',
+  capture_fields: 'Terms captured',
+  finance_approve: 'Finance approved',
+  finance_request_changes: 'Finance requested changes',
+  setup_billing: 'Billing setup started',
+  billing_done: 'Billing configured',
+  field_approved: 'Term approved',
+  field_corrected: 'Term corrected',
+  user_invited: 'User invited',
+  engagement_created: 'Engagement created',
+  engagement_scope_changed: 'Scope changed',
+  vehicle_assigned: 'Vehicles assigned',
+  vehicle_released: 'Vehicle released',
+}
+const actionLabel = (a) => ACTION_LABEL[a] || a
+const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '')
+
+onMounted(async () => {
+  try {
+    events.value = (await api.get(`/engagements/${route.params.eid}/audit`)).data.events
+  } catch {
+    /* activity is supplementary; the rest of the page still renders */
+  }
+})
 
 const LABELS = {
   DRAFT: 'Draft', EXTRACTING: 'Extracting terms', IN_UNDERWRITING: 'In underwriting review',
@@ -83,6 +120,25 @@ const nextHint = computed(() => {
       <p style="margin: 6px 0 12px">{{ nextHint }}</p>
       <router-link :to="{ name: 'eng-terms', params: { eid: route.params.eid } }" class="golink">Go to Terms →</router-link>
     </div>
+
+    <div class="card pad">
+      <h2>Activity</h2>
+      <div v-if="events.length" class="timeline">
+        <div v-for="e in events" :key="e.event_id" class="ev">
+          <div class="dot" />
+          <div class="ebody">
+            <div class="etop">
+              <strong>{{ actionLabel(e.action) }}</strong>
+              <span class="muted small">{{ when(e.ts) }}</span>
+            </div>
+            <div class="muted small">
+              by {{ e.actor_name || e.actor_role }}<span v-if="e.comment"> — “{{ e.comment }}”</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p v-else class="muted">No activity yet.</p>
+    </div>
   </div>
 </template>
 
@@ -95,5 +151,11 @@ const nextHint = computed(() => {
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }
 .rbody { margin: 0 0 12px; font-size: 16px; line-height: 1.5; font-style: italic; }
 .golink { font-weight: 600; }
+.timeline { display: flex; flex-direction: column; }
+.ev { display: flex; gap: 12px; padding-bottom: 16px; position: relative; }
+.ev:not(:last-child)::before { content: ''; position: absolute; left: 4px; top: 12px; bottom: 0; width: 2px; background: var(--line); }
+.dot { width: 10px; height: 10px; border-radius: 999px; background: var(--accent); margin-top: 4px; flex-shrink: 0; z-index: 1; }
+.etop { display: flex; justify-content: space-between; gap: 10px; }
+.ebody { flex: 1; min-width: 0; }
 @media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 </style>

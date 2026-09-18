@@ -53,6 +53,19 @@ const LABELS = {
   FINANCE_APPROVED: 'Finance approved', BILLING_SETUP: 'Setting up billing', ACTIVE: 'Active',
 }
 const statusLabel = computed(() => LABELS[eng.status] || eng.status)
+
+// A master agreement runs a fixed term; surface how much of it is left, and whether it renews.
+const expiry = computed(() => {
+  const end = eng.data?.engagement?.contract_end
+  if (!end) return null
+  const days = Math.round((new Date(end) - new Date()) / 86400000)
+  const auto = eng.data?.engagement?.auto_renew
+  const label =
+    days < 0
+      ? `lapsed ${Math.abs(days)} days ago`
+      : `${days} days left${auto ? ' · auto-renews' : ''}`
+  return { days, label }
+})
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 
 const nextHint = computed(() => {
@@ -108,6 +121,16 @@ const nextHint = computed(() => {
           <span class="muted" style="font-weight: 400; font-size: 13px">{{ eng.fleetSizeSource === 'override' ? 'set manually' : `${eng.assignedVehicleCount} assigned` }}</span>
         </div>
       </div>
+      <div class="stattile" :class="{ warn: expiry && expiry.days <= 90 }">
+        <div class="label">Contract expiry</div>
+        <div class="val">
+          <template v-if="expiry">
+            {{ fmt(eng.data.engagement.contract_end) }}
+            <span class="muted" style="font-weight: 400; font-size: 13px">{{ expiry.label }}</span>
+          </template>
+          <span v-else class="muted" style="font-size: 15px">Not recorded</span>
+        </div>
+      </div>
       <div class="stattile"><div class="label">Created</div><div class="val">{{ fmt(eng.data.engagement.created_at) }}</div></div>
       <div class="stattile">
         <div class="label">Terms approved</div>
@@ -145,7 +168,8 @@ const nextHint = computed(() => {
 <style scoped>
 .pad { padding: 20px 22px; }
 .small { font-size: 12px; }
-.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stattile.warn { border-left: 3px solid var(--warn); }
 .next { border-left: 3px solid var(--accent); }
 .response { border-left: 3px solid var(--accent); background: var(--accent-weak, #e3ecf9); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }

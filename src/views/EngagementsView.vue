@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 
 import Dialog from '../components/Dialog.vue'
+import Dropdown from '../components/Dropdown.vue'
 import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
@@ -26,6 +27,9 @@ const shown = computed(() =>
     : engagements.value,
 )
 const customerName = (id) => customers.value.find((c) => c.customer_id === id)?.legal_name
+const customerOptions = computed(() => customers.value.map((c) => ({ value: c.customer_id, label: c.legal_name })))
+const customerFilterOptions = computed(() => [{ value: '', label: 'All customers' }, ...customerOptions.value])
+const scopeOptions = Object.entries(SCOPE_LABELS).map(([value, label]) => ({ value, label }))
 
 async function load() {
   loading.value = true
@@ -74,10 +78,9 @@ onMounted(load)
 
 
     <div v-if="auth.isProvider && customers.length" class="row" style="margin-bottom: 14px">
-      <select v-model="filterCustomer" style="max-width: 260px">
-        <option value="">All customers</option>
-        <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
-      </select>
+      <div style="max-width: 260px; width: 100%">
+        <Dropdown v-model="filterCustomer" :options="customerFilterOptions" placeholder="All customers" />
+      </div>
     </div>
 
     <p v-if="err" class="err">{{ err }}</p>
@@ -107,16 +110,11 @@ onMounted(load)
       </label>
       <label class="fld" style="margin-top: 14px">
         <span class="label">Customer</span>
-        <select v-model="customerId">
-          <option value="">Select customer…</option>
-          <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
-        </select>
+        <Dropdown v-model="customerId" :options="customerOptions" placeholder="Select customer…" />
       </label>
       <label class="fld" style="margin-top: 14px">
         <span class="label">Scope</span>
-        <select v-model="scope">
-          <option v-for="(label, key) in SCOPE_LABELS" :key="key" :value="key">{{ label }}</option>
-        </select>
+        <Dropdown v-model="scope" :options="scopeOptions" />
       </label>
       <p class="muted small" style="margin: 14px 0 0">
         No customer yet? <router-link to="/customers">Add one first</router-link>.

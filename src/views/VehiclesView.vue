@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import Dialog from '../components/Dialog.vue'
+import Dropdown from '../components/Dropdown.vue'
 import { api } from '../services/api'
 
 const route = useRoute()
@@ -24,8 +25,6 @@ const customers = ref([])
 const loading = ref(true)
 const err = ref('')
 const filters = ref({ status: '', duty_band: '', ownership: '', customer_id: route.query.customer_id || '' })
-const selected = ref(new Set())
-const assignTo = ref('')
 const busy = ref('')
 const showNew = ref(false)
 const form = ref({
@@ -35,14 +34,24 @@ const form = ref({
 })
 
 const pretty = (v) => (v || '').replace(/_/g, ' ').toLowerCase()
-const selectedCount = computed(() => selected.value.size)
+const opts = (values, allLabel) => [
+  ...(allLabel ? [{ value: '', label: allLabel }] : []),
+  ...values.map((v) => ({ value: v, label: pretty(v) })),
+]
+const statusOptions = opts(STATUSES, 'All statuses')
+const dutyOptions = opts(DUTY_BANDS, 'All types')
+const ownershipFilterOptions = [
+  { value: '', label: 'All ownership' },
+  { value: 'WHEELS_OWNED', label: 'Wheels owned' },
+  { value: 'CUSTOMER_OWNED', label: 'Customer owned' },
+]
+const ownershipOptions = ownershipFilterOptions.slice(1)
+const bodyOptions = opts(BODY_CLASSES)
+const powertrainOptions = POWERTRAINS.map((v) => ({ value: v, label: v }))
+const leaseOptions = [{ value: '', label: 'Not specified' }, ...opts(LEASE_STRUCTURES)]
+const customerOptions = computed(() => customers.value.map((c) => ({ value: c.customer_id, label: c.legal_name })))
+const customerFilterOptions = computed(() => [{ value: '', label: 'All customers' }, ...customerOptions.value])
 const assignable = computed(() => vehicles.value.filter((v) => !v.engagement_id))
-
-function toggle(id) {
-  const next = new Set(selected.value)
-  next.has(id) ? next.delete(id) : next.add(id)
-  selected.value = next
-}
 
 async function load() {
   loading.value = true
@@ -88,23 +97,6 @@ async function create() {
   busy.value = ''
 }
 
-async function assignSelected() {
-  if (!assignTo.value || !selectedCount.value) return
-  busy.value = 'assign'
-  try {
-    const r = await api.post('/vehicles:bulk-assign', {
-      vehicle_ids: [...selected.value],
-      engagement_id: assignTo.value,
-    })
-    err.value = r.data.failed?.length ? `${r.data.failed.length} could not be assigned` : ''
-    selected.value = new Set()
-    await load()
-  } catch (e) {
-    err.value = e.response?.data?.detail || e.message
-  }
-  busy.value = ''
-}
-
 async function release(id) {
   busy.value = id
   try {
@@ -136,29 +128,58 @@ watch(filters, load, { deep: true })
 
     <div v-if="summary" class="grid tiles">
       <div class="stattile"><div class="label">Total units</div><div class="val">{{ summary.total }}</div></div>
+      <div class="stattile">
+        <div class="label">Utilisation</div>
+        <div class="val">{{ summary.utilisation }}%</div>
+        <div class="muted small">{{ summary.assigned }} of {{ summary.wheels_owned }} leasable on hire</div>
+      </div>
       <div class="stattile"><div class="label">Available to lease</div><div class="val">{{ summary.available_to_lease }}</div></div>
-      <div class="stattile"><div class="label">Assigned</div><div class="val">{{ summary.assigned }}</div></div>
+      <div class="stattile">
+        <div class="label">Electrified</div>
+        <div class="val">{{ summary.electrified_share }}%</div>
+        <div class="muted small">hybrid, plug-in or battery</div>
+      </div>
       <div class="stattile"><div class="label">Customer-owned</div><div class="val">{{ summary.customer_owned }}</div></div>
+    </div>
+
+    <!-- Composition. Bar length carries the share, so one hue per breakdown; status is the
+         exception because those are states and use the reserved ramp. -->
+    <div v-if="summary" class="grid comp">
+      <div class="card pad">
+        <h2>By status</h2>
+        <div class="stack8">
+          <div v-for="b in summary.status_breakdown" :key="b.key" class="brk">
+            <div class="brktop"><span>{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="track"><div class="fill" :class="'st_' + b.key" :style="{ width: b.share + '%' }" /></div>
+          </div>
+        </div>
+      </div>
+      <div class="card pad">
+        <h2>By type</h2>
+        <div class="stack8">
+          <div v-for="b in summary.duty_breakdown" :key="b.key" class="brk">
+            <div class="brktop"><span>{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="track"><div class="fill" :style="{ width: b.share + '%' }" /></div>
+          </div>
+        </div>
+      </div>
+      <div class="card pad">
+        <h2>By powertrain</h2>
+        <div class="stack8">
+          <div v-for="b in summary.powertrain_breakdown" :key="b.key" class="brk">
+            <div class="brktop"><span>{{ b.key }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="track"><div class="fill" :class="'pw_' + b.key" :style="{ width: b.share + '%' }" /></div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="card pad">
       <div class="row filters">
-        <label class="fld"><span class="label">Status</span><select v-model="filters.status"><option value="">All</option><option v-for="s in STATUSES" :key="s" :value="s">{{ pretty(s) }}</option></select></label>
-        <label class="fld"><span class="label">Type</span><select v-model="filters.duty_band"><option value="">All</option><option v-for="d in DUTY_BANDS" :key="d" :value="d">{{ pretty(d) }}</option></select></label>
-        <label class="fld"><span class="label">Ownership</span><select v-model="filters.ownership"><option value="">All</option><option value="WHEELS_OWNED">Wheels owned</option><option value="CUSTOMER_OWNED">Customer owned</option></select></label>
-        <label class="fld"><span class="label">Customer</span><select v-model="filters.customer_id"><option value="">All</option><option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option></select></label>
-      </div>
-
-      <div v-if="selectedCount" class="row assignbar">
-        <strong>{{ selectedCount }} selected</strong>
-        <select v-model="assignTo" style="max-width: 260px">
-          <option value="">Assign to engagement…</option>
-          <option v-for="e in engagements" :key="e.engagement_id" :value="e.engagement_id">{{ e.name }} — {{ e.client_name }}</option>
-        </select>
-        <button class="primary sm" :disabled="!assignTo || busy === 'assign'" @click="assignSelected">
-          {{ busy === 'assign' ? 'Assigning…' : 'Assign' }}
-        </button>
-        <button class="ghost sm" @click="selected = new Set()">Clear</button>
+        <label class="fld"><span class="label">Status</span><Dropdown v-model="filters.status" :options="statusOptions" placeholder="All statuses" /></label>
+        <label class="fld"><span class="label">Type</span><Dropdown v-model="filters.duty_band" :options="dutyOptions" placeholder="All types" /></label>
+        <label class="fld"><span class="label">Ownership</span><Dropdown v-model="filters.ownership" :options="ownershipFilterOptions" placeholder="All ownership" /></label>
+        <label class="fld"><span class="label">Customer</span><Dropdown v-model="filters.customer_id" :options="customerFilterOptions" placeholder="All customers" /></label>
       </div>
 
       <p v-if="err" class="err">{{ err }}</p>
@@ -167,14 +188,12 @@ watch(filters, load, { deep: true })
       <table v-else-if="vehicles.length" class="vtab">
         <thead>
           <tr>
-            <th style="width: 28px"></th>
             <th>Unit</th><th>Vehicle</th><th>Type</th><th>Power</th>
             <th>Ownership</th><th>Status</th><th>Engagement</th><th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="v in vehicles" :key="v.vehicle_id">
-            <td><input type="checkbox" :disabled="!!v.engagement_id" :checked="selected.has(v.vehicle_id)" @change="toggle(v.vehicle_id)" /></td>
             <td><strong>{{ v.unit_number || v.vin || v.vehicle_id.slice(0, 6) }}</strong></td>
             <td>{{ [v.year, v.make, v.model].filter(Boolean).join(' ') || '—' }}</td>
             <td class="muted">{{ pretty(v.body_class) }}<span class="muted small"> · {{ pretty(v.duty_band) }}</span></td>
@@ -210,17 +229,17 @@ watch(filters, load, { deep: true })
         <label class="fld"><span class="label">Year</span><input v-model.number="form.year" type="number" placeholder="2025" /></label>
         <label class="fld"><span class="label">Make</span><input v-model="form.make" placeholder="Ford" /></label>
         <label class="fld"><span class="label">Model</span><input v-model="form.model" placeholder="F-150" /></label>
-        <label class="fld"><span class="label">Body class</span><select v-model="form.body_class"><option v-for="b in BODY_CLASSES" :key="b" :value="b">{{ pretty(b) }}</option></select></label>
-        <label class="fld"><span class="label">Powertrain</span><select v-model="form.powertrain"><option v-for="p in POWERTRAINS" :key="p" :value="p">{{ p }}</option></select></label>
+        <label class="fld"><span class="label">Body class</span><Dropdown v-model="form.body_class" :options="bodyOptions" /></label>
+        <label class="fld"><span class="label">Powertrain</span><Dropdown v-model="form.powertrain" :options="powertrainOptions" /></label>
         <label class="fld"><span class="label">Odometer</span><input v-model.number="form.odometer" type="number" placeholder="12000" /></label>
-        <label class="fld"><span class="label">Ownership</span><select v-model="form.ownership"><option value="WHEELS_OWNED">Wheels owned</option><option value="CUSTOMER_OWNED">Customer owned</option></select></label>
+        <label class="fld"><span class="label">Ownership</span><Dropdown v-model="form.ownership" :options="ownershipOptions" /></label>
       </div>
       <div class="grid two" style="margin-top: 14px">
         <template v-if="form.ownership === 'CUSTOMER_OWNED'">
-          <label class="fld"><span class="label">Customer</span><select v-model="form.customer_id"><option value="">Select…</option><option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option></select></label>
+          <label class="fld"><span class="label">Customer</span><Dropdown v-model="form.customer_id" :options="customerOptions" placeholder="Select customer…" /></label>
         </template>
         <template v-else>
-          <label class="fld"><span class="label">Lease structure</span><select v-model="form.lease_structure"><option value="">—</option><option v-for="l in LEASE_STRUCTURES" :key="l" :value="l">{{ pretty(l) }}</option></select></label>
+          <label class="fld"><span class="label">Lease structure</span><Dropdown v-model="form.lease_structure" :options="leaseOptions" placeholder="Not specified" /></label>
           <label class="fld"><span class="label">Term (months)</span><input v-model.number="form.lease_term_months" type="number" min="24" max="120" placeholder="36" /></label>
         </template>
       </div>
@@ -240,18 +259,34 @@ watch(filters, load, { deep: true })
 .page { max-width: 1140px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 16px; }
 .head h1 { margin: 0; }
 .pad { padding: 20px; }
-.tiles { grid-template-columns: repeat(4, 1fr); }
+.tiles { grid-template-columns: repeat(5, 1fr); }
 .three { grid-template-columns: repeat(3, 1fr); }
 .two { grid-template-columns: repeat(2, 1fr); }
 .nowrap { white-space: nowrap; }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .filters { gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .filters .fld { min-width: 150px; }
-.assignbar { gap: 10px; padding: 10px 12px; background: var(--accent-weak); border-radius: var(--radius-sm); margin-bottom: 12px; flex-wrap: wrap; }
+.comp { grid-template-columns: repeat(3, 1fr); }
+.stack8 { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.brk { display: flex; flex-direction: column; gap: 5px; }
+.brktop { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.mono { font-variant-numeric: tabular-nums; }
+.track { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.fill { height: 100%; border-radius: 999px; background: #1d5cb0; min-width: 2px; }
+.fill.st_IN_STOCK { background: #14a06a; }
+.fill.st_ASSIGNED { background: #1d5cb0; }
+.fill.st_ON_ORDER { background: #4a86d4; }
+.fill.st_IN_MAINTENANCE { background: #d97a29; }
+.fill.st_RETIRED { background: #8a8294; }
+.fill.pw_ICE { background: #6b7994; }
+.fill.pw_HYBRID { background: #4a86d4; }
+.fill.pw_PHEV { background: #1d5cb0; }
+.fill.pw_BEV { background: #14a06a; }
 .vtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vtab th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--line); }
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .pill.role { background: #e9eef6; color: var(--muted); }
 .err { color: var(--risk); }
+@media (max-width: 1000px) { .comp { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .tiles, .three, .two { grid-template-columns: repeat(2, 1fr); } }
 </style>

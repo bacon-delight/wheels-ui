@@ -27,6 +27,19 @@ const topEngagements = computed(() => (data.value?.top_engagements || []).slice(
 const atRisk = computed(() => data.value?.at_risk_customers || [])
 const aging = computed(() => data.value?.aging || [])
 const trend = computed(() => data.value?.revenue_trend || [])
+const recent = computed(() => (data.value?.recent_engagements || []).slice(0, 5))
+const expiring = computed(() => (data.value?.expiring_contracts || []).slice(0, 8))
+const expiryBuckets = computed(() => data.value?.expiry_buckets || [])
+const expiryTotal = computed(() => expiryBuckets.value.reduce((n, b) => n + b.count, 0))
+
+const expiryLabel = (days) => {
+  if (days < 0) return `expired ${Math.abs(days)}d ago`
+  if (days === 0) return 'expires today'
+  return `${days}d left`
+}
+const expiryClass = (days) => (days < 0 ? 'risk' : days <= 30 ? 'risk' : days <= 90 ? 'warn' : 'ok')
+const shortDate = (iso) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
 const funnelMax = computed(() => Math.max(1, ...funnel.value.map((s) => s.count)))
 const custMax = computed(() => Math.max(1, ...topCustomers.value.map((c) => c.monthly_recurring)))
@@ -36,7 +49,9 @@ const agingTotal = computed(() => aging.value.reduce((n, b) => n + b.amount, 0))
 // --- trend chart geometry (inline SVG; no external library) ---
 const W = 720
 const H = 200
-const PAD = { t: 14, r: 16, b: 26, l: 52 }
+// Value labels ride above their gridline rather than in a left rail, so the plot keeps equal
+// gutters on both sides instead of being pushed right by the widest label.
+const PAD = { t: 26, r: 8, b: 26, l: 8 }
 const plotW = W - PAD.l - PAD.r
 const plotH = H - PAD.t - PAD.b
 const trendMax = computed(() => Math.max(1, ...trend.value.flatMap((m) => [m.billed, m.collected])))
@@ -132,7 +147,7 @@ onMounted(load)
              @mousemove="onMove" @mouseleave="hover = null">
           <g>
             <line v-for="g in gridLines" :key="g.f" :x1="PAD.l" :x2="W - PAD.r" :y1="g.y" :y2="g.y" class="grid" />
-            <text v-for="g in gridLines" :key="'t' + g.f" :x="PAD.l - 8" :y="g.y + 4" class="axis r">{{ g.label }}</text>
+            <text v-for="g in gridLines" :key="'t' + g.f" :x="PAD.l" :y="g.y - 6" class="axis">{{ g.label }}</text>
           </g>
           <text v-for="(m, i) in trend" :key="m.month" :x="xAt(i)" :y="H - 8" class="axis mid">{{ monthLabel(m.month) }}</text>
           <path :d="path('billed')" fill="none" :stroke="C_BILLED" stroke-width="2" stroke-linejoin="round" />
@@ -151,20 +166,24 @@ onMounted(load)
         </div>
       </div>
 
+      <!-- Two tall ranking cards pair with each other; the two short cards pair below, so
+           neither row leaves a card stretched over empty space. -->
       <div class="two">
         <!-- Ranking by magnitude: bar length is the encoding, so one hue throughout. -->
         <div class="card pad">
           <div class="spread">
             <h2 style="margin: 0">Top customers by revenue</h2>
-            <span class="muted small">Top {{ totals.top5_revenue_share }}% from 5</span>
+            <span class="muted small">Top 5 hold {{ totals.top5_revenue_share }}%</span>
           </div>
           <div class="ranks">
             <div v-for="(c, i) in topCustomers" :key="c.customer_id || c.name" class="rank">
-              <span class="rk">{{ i + 1 }}</span>
               <div class="rbody">
                 <div class="rtop">
-                  <router-link v-if="c.customer_id" :to="`/customers/${c.customer_id}`" class="rname">{{ c.name }}</router-link>
-                  <span v-else class="rname">{{ c.name }}</span>
+                  <span class="rname">
+                    <span class="rk">{{ i + 1 }}</span>
+                    <router-link v-if="c.customer_id" :to="`/customers/${c.customer_id}`">{{ c.name }}</router-link>
+                    <span v-else>{{ c.name }}</span>
+                  </span>
                   <strong class="mono">{{ usd(c.monthly_recurring, 2) }}</strong>
                 </div>
                 <div class="track"><div class="fill" :style="{ width: (c.monthly_recurring / custMax) * 100 + '%' }" /></div>
@@ -178,6 +197,64 @@ onMounted(load)
           </div>
         </div>
 
+        <div class="card pad">
+          <h2>Top engagements</h2>
+          <div class="ranks">
+            <div v-for="(e, i) in topEngagements" :key="e.engagement_id" class="rank">
+              <div class="rbody">
+                <div class="rtop">
+                  <span class="rname">
+                    <span class="rk">{{ i + 1 }}</span>
+                    <router-link :to="`/engagements/${e.engagement_id}`">{{ e.name }}</router-link>
+                  </span>
+                  <strong class="mono">{{ usd(e.monthly_recurring, 2) }}</strong>
+                </div>
+                <div class="track"><div class="fill alt" :style="{ width: ((e.monthly_recurring || 0) / engMax) * 100 + '%' }" /></div>
+                <div class="muted small">{{ e.customer_name }} · {{ e.fleet_size }} vehicles</div>
+              </div>
+            </div>
+            <p v-if="!topEngagements.length" class="muted">No active engagements yet.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contract expiry: what is up for renewal, and what revenue rides on it. -->
+      <div class="card pad">
+        <div class="spread">
+          <h2 style="margin: 0">Contract expiry</h2>
+          <span class="muted small">
+            {{ totals.expiring_90d }} within 90 days · {{ usd(totals.expiring_90d_value, 2) }}/mo at renewal
+          </span>
+        </div>
+        <div v-if="expiryTotal" class="agebar" style="margin-top: 16px">
+          <div v-for="b in expiryBuckets" :key="b.key" v-show="b.count > 0" class="seg" :class="'x_' + b.key"
+               :style="{ width: (b.count / expiryTotal) * 100 + '%' }" :title="`${b.label}: ${b.count}`" />
+        </div>
+        <div class="row bands">
+          <span v-for="b in expiryBuckets" :key="b.key" v-show="b.count > 0" class="legchip">
+            <i :class="'x_' + b.key" /> {{ b.label }} · {{ b.count }}
+          </span>
+        </div>
+        <table v-if="expiring.length" class="mini wide">
+          <thead><tr><th>Engagement</th><th>Customer</th><th>Expires</th><th class="r">Monthly</th><th class="r">Term</th></tr></thead>
+          <tbody>
+            <tr v-for="e in expiring" :key="e.engagement_id">
+              <td><router-link :to="`/engagements/${e.engagement_id}`" class="ename">{{ e.name }}</router-link></td>
+              <td class="muted">{{ e.customer_name }}</td>
+              <td>
+                {{ shortDate(e.contract_end) }}
+                <span class="badge" :class="expiryClass(e.days_to_expiry)"><span class="dot" />{{ expiryLabel(e.days_to_expiry) }}</span>
+                <span v-if="e.auto_renew" class="pill role">auto-renews</span>
+              </td>
+              <td class="r mono">{{ usd(e.monthly_recurring, 2) }}</td>
+              <td class="r muted">{{ e.contract_term_months ? e.contract_term_months + ' mo' : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="muted" style="margin-top: 12px">No contract end dates recorded yet.</p>
+      </div>
+
+      <div class="two">
         <!-- Receivables aging: these are states, so the reserved status ramp applies. -->
         <div class="card pad">
           <h2>Receivables aging</h2>
@@ -204,26 +281,6 @@ onMounted(load)
             </div>
           </template>
         </div>
-      </div>
-
-      <div class="two">
-        <div class="card pad">
-          <h2>Top engagements</h2>
-          <div class="ranks">
-            <div v-for="(e, i) in topEngagements" :key="e.engagement_id" class="rank">
-              <span class="rk">{{ i + 1 }}</span>
-              <div class="rbody">
-                <div class="rtop">
-                  <router-link :to="`/engagements/${e.engagement_id}`" class="rname">{{ e.name }}</router-link>
-                  <strong class="mono">{{ usd(e.monthly_recurring, 2) }}</strong>
-                </div>
-                <div class="track"><div class="fill alt" :style="{ width: ((e.monthly_recurring || 0) / engMax) * 100 + '%' }" /></div>
-                <div class="muted small">{{ e.customer_name }} · {{ e.fleet_size }} vehicles</div>
-              </div>
-            </div>
-            <p v-if="!topEngagements.length" class="muted">No active engagements yet.</p>
-          </div>
-        </div>
 
         <div class="card pad">
           <h2>Onboarding pipeline</h2>
@@ -240,14 +297,17 @@ onMounted(load)
       </div>
 
       <div class="card">
-        <div class="pad" style="padding-bottom: 0"><h2>All engagements</h2></div>
+        <div class="pad spread" style="padding-bottom: 0">
+          <h2 style="margin: 0">Recent engagements</h2>
+          <router-link to="/engagements" class="muted small">See all →</router-link>
+        </div>
         <div class="twrap">
           <table>
             <thead>
               <tr><th>Engagement</th><th>Customer</th><th>Status</th><th class="r">Fleet</th><th class="r">Monthly</th><th class="r">Collected</th><th class="r">Overdue</th></tr>
             </thead>
             <tbody>
-              <tr v-for="r in rows" :key="r.engagement_id">
+              <tr v-for="r in recent" :key="r.engagement_id">
                 <td><router-link :to="`/engagements/${r.engagement_id}`" class="ename">{{ r.name }}</router-link></td>
                 <td>
                   <router-link v-if="r.customer_id" :to="`/customers/${r.customer_id}`" class="muted">{{ r.customer_name }}</router-link>
@@ -259,7 +319,7 @@ onMounted(load)
                 <td class="r mono muted">{{ usd(r.collected_amount, 2) }}</td>
                 <td class="r mono" :class="{ odue: r.overdue_amount > 0 }">{{ r.overdue_amount ? usd(r.overdue_amount, 2) : '—' }}</td>
               </tr>
-              <tr v-if="!rows.length"><td colspan="7" class="muted" style="padding: 18px">No engagements yet.</td></tr>
+              <tr v-if="!recent.length"><td colspan="7" class="muted" style="padding: 18px">No engagements yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -290,13 +350,10 @@ onMounted(load)
 
 .card { margin-bottom: 18px; }
 .pad { padding: 20px 22px; }
-/* Stretch, not start: paired cards share a row, so a short one next to a tall one read as a
-   layout mistake. Each card lays out as a column so its list can take the slack. */
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; margin-bottom: 18px; }
-.two > .card { margin-bottom: 0; display: flex; flex-direction: column; }
-.two > .card > .ranks, .two > .card > .funnel { flex: 1; }
-/* Empty states still need enough body to look deliberate rather than broken. */
-.two > .card { min-height: 260px; }
+/* Cards size to their content. Forcing equal heights put dead space under whichever card had
+   less to say; the min-height only guards the empty state. */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; margin-bottom: 18px; }
+.two > .card { margin-bottom: 0; min-height: 220px; }
 
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-soft); }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
@@ -305,18 +362,19 @@ onMounted(load)
 .grid { stroke: var(--line); stroke-width: 1; }
 .cross { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 .axis { font-size: 10px; fill: var(--muted); }
-.axis.r { text-anchor: end; }
 .axis.mid { text-anchor: middle; }
 .tip { display: flex; gap: 16px; align-items: center; font-size: 12px; margin-top: 8px; color: var(--ink-soft); }
 .tip span { display: inline-flex; align-items: center; gap: 6px; }
 
 .ranks { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; justify-content: flex-start; }
-.ranks > .muted { margin: auto 0; text-align: center; color: var(--muted); }
-.rank { display: flex; gap: 10px; align-items: flex-start; }
-.rk { width: 20px; flex-shrink: 0; text-align: right; font-size: 12px; font-weight: 700; color: var(--muted); padding-top: 2px; }
-.rbody { flex: 1; min-width: 0; }
-.rtop { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-bottom: 5px; }
-.rname { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranks > .muted { margin: 8px 0; color: var(--muted); }
+.rank { display: block; }
+.rk { font-size: 12px; font-weight: 700; color: var(--muted); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.rbody { min-width: 0; }
+.rtop { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-bottom: 5px; align-items: baseline; }
+.rname { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.rname a { color: inherit; }
+.rname a:hover { color: var(--accent-ink); }
 .rname:hover { color: var(--accent-ink); }
 .track { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
 .fill { height: 100%; border-radius: 999px; background: #1d5cb0; min-width: 2px; }
@@ -333,12 +391,27 @@ onMounted(load)
 .seg.d31_60, .swatch.d31_60 { background: #d97a29; }
 .seg.d61_90, .swatch.d61_90 { background: #c9512f; }
 .seg.d90_plus, .swatch.d90_plus { background: #a32d2d; }
+.seg.x_expired, .legchip i.x_expired { background: #a32d2d; }
+.seg.x_d30, .legchip i.x_d30 { background: #c9512f; }
+.seg.x_d60, .legchip i.x_d60 { background: #d97a29; }
+.seg.x_d90, .legchip i.x_d90 { background: #c9a227; }
+.seg.x_d180, .legchip i.x_d180 { background: #4a86d4; }
+.seg.x_later, .legchip i.x_later { background: #14a06a; }
+.legchip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); }
+.legchip i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.bands { gap: 14px; flex-wrap: wrap; margin: 12px 0 4px; }
+.mini.wide { margin-top: 10px; }
+.mini.wide th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; padding: 6px 10px 6px 0; }
+.mini.wide td { padding: 9px 10px 9px 0; }
+.pill.role { background: #e9eef6; color: var(--muted); font-size: 11px; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
 .mini { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mini td { vertical-align: middle; }
 .mini td { padding: 6px 0; border-top: 1px solid var(--line); }
 .riskrow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
 
-.funnel { display: grid; gap: 12px; margin-top: 14px; }
+/* align-content: start so the rows keep their natural spacing instead of distributing
+   themselves down whatever height the card happens to have. */
+.funnel { display: grid; gap: 14px; margin-top: 14px; align-content: start; }
 .stage-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
 .stage-label { color: var(--ink-soft); font-weight: 500; }
 .stage-count { font-weight: 700; }

@@ -62,7 +62,7 @@ watch(() => route.params.eid, reload)
 </template>
 
 <style scoped>
-.wrap { max-width: 1000px; margin: 0 auto; padding: 28px 32px 60px; }
+.wrap { max-width: 1680px; margin: 0 auto; padding: 28px 32px 60px; }
 .back { display: inline-block; font-size: 13px; margin-bottom: 14px; }
 .ehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .sub { font-size: 15px; margin-top: 4px; }

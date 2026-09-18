@@ -101,7 +101,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 780px; margin: 0 auto; padding: 32px; }
+.page { max-width: 1680px; margin: 0 auto; padding: 32px; }
 .head { margin-bottom: 22px; align-items: flex-start; }
 .head h1 { margin: 0; }
 .nowrap { white-space: nowrap; }

@@ -99,7 +99,7 @@ onMounted(load)
       </div>
 
       <div v-if="byDuty.length" class="row bands">
-        <span v-for="[band, n] in byDuty" :key="band" class="pill role">{{ pretty(band) }} · {{ n }}</span>
+        <span v-for="[band, n] in byDuty" :key="band" class="pill role">{{ pretty(band) }} <b>{{ n }}</b></span>
       </div>
       <p v-if="err" class="err">{{ err }}</p>
     </div>
@@ -162,6 +162,12 @@ onMounted(load)
 .vtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vtab th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--line); }
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.pill.role { background: #e9eef6; color: var(--muted); }
+.pill.role {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: var(--accent-weak); color: var(--accent-ink);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px;
+}
+.pill.role b { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .err { color: var(--risk); margin: 10px 0 0; }
 </style>

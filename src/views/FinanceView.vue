@@ -329,7 +329,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 1160px; margin: 0 auto; padding: 32px; }
+.page { max-width: 1680px; margin: 0 auto; padding: 32px; }
 .head { margin-bottom: 22px; align-items: flex-start; }
 .head h1 { margin: 0; }
 .err { color: var(--risk); background: var(--risk-weak); padding: 10px 14px; border-radius: 10px; }

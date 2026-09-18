@@ -104,7 +104,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page { max-width: 1000px; padding: 32px; }
+.page { max-width: 1680px; margin: 0 auto; padding: 32px; }
 .head { margin-bottom: 20px; }
 .pad { padding: 20px; }
 .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }

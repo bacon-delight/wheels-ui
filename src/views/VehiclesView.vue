@@ -25,6 +25,9 @@ const customers = ref([])
 const loading = ref(true)
 const err = ref('')
 const filters = ref({ status: '', duty_band: '', ownership: '', customer_id: route.query.customer_id || '' })
+const page = ref(1)
+const perPage = ref(20)
+const perPageOptions = [15, 20, 50, 100].map((n) => ({ value: n, label: `${n} per page` }))
 const busy = ref('')
 const showNew = ref(false)
 const form = ref({
@@ -52,6 +55,28 @@ const leaseOptions = [{ value: '', label: 'Not specified' }, ...opts(LEASE_STRUC
 const customerOptions = computed(() => customers.value.map((c) => ({ value: c.customer_id, label: c.legal_name })))
 const customerFilterOptions = computed(() => [{ value: '', label: 'All customers' }, ...customerOptions.value])
 const assignable = computed(() => vehicles.value.filter((v) => !v.engagement_id))
+
+// The filtered set is already in memory, so paging is a slice; the fleet is in the hundreds,
+// not the millions, and a cursor round-trip per page would be slower than this.
+const pageCount = computed(() => Math.max(1, Math.ceil(vehicles.value.length / perPage.value)))
+const paged = computed(() => {
+  const start = (page.value - 1) * perPage.value
+  return vehicles.value.slice(start, start + perPage.value)
+})
+const rangeFrom = computed(() => (vehicles.value.length ? (page.value - 1) * perPage.value + 1 : 0))
+const rangeTo = computed(() => Math.min(page.value * perPage.value, vehicles.value.length))
+// A window around the current page, so a 25-page list does not render 25 buttons.
+const pageWindow = computed(() => {
+  const total = pageCount.value
+  const span = 5
+  let start = Math.max(1, page.value - Math.floor(span / 2))
+  const end = Math.min(total, start + span - 1)
+  start = Math.max(1, end - span + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+})
+function goTo(n) {
+  page.value = Math.min(pageCount.value, Math.max(1, n))
+}
 
 async function load() {
   loading.value = true
@@ -113,7 +138,8 @@ const engName = (id) => engagements.value.find((e) => e.engagement_id === id)?.n
 onMounted(async () => {
   await Promise.all([load(), loadPickers()])
 })
-watch(filters, load, { deep: true })
+watch(filters, () => { page.value = 1; load() }, { deep: true })
+watch(perPage, () => { page.value = 1 })
 </script>
 
 <template>
@@ -149,7 +175,7 @@ watch(filters, load, { deep: true })
         <h2>By status</h2>
         <div class="stack8">
           <div v-for="b in summary.status_breakdown" :key="b.key" class="brk">
-            <div class="brktop"><span>{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="brktop"><span class="bkey">{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
             <div class="track"><div class="fill" :class="'st_' + b.key" :style="{ width: b.share + '%' }" /></div>
           </div>
         </div>
@@ -158,7 +184,7 @@ watch(filters, load, { deep: true })
         <h2>By type</h2>
         <div class="stack8">
           <div v-for="b in summary.duty_breakdown" :key="b.key" class="brk">
-            <div class="brktop"><span>{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="brktop"><span class="bkey">{{ pretty(b.key) }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
             <div class="track"><div class="fill" :style="{ width: b.share + '%' }" /></div>
           </div>
         </div>
@@ -167,7 +193,7 @@ watch(filters, load, { deep: true })
         <h2>By powertrain</h2>
         <div class="stack8">
           <div v-for="b in summary.powertrain_breakdown" :key="b.key" class="brk">
-            <div class="brktop"><span>{{ b.key }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
+            <div class="brktop"><span class="bkey">{{ b.key }}</span><span class="mono">{{ b.count }} <span class="muted">{{ b.share }}%</span></span></div>
             <div class="track"><div class="fill" :class="'pw_' + b.key" :style="{ width: b.share + '%' }" /></div>
           </div>
         </div>
@@ -193,7 +219,7 @@ watch(filters, load, { deep: true })
           </tr>
         </thead>
         <tbody>
-          <tr v-for="v in vehicles" :key="v.vehicle_id">
+          <tr v-for="v in paged" :key="v.vehicle_id">
             <td><strong>{{ v.unit_number || v.vin || v.vehicle_id.slice(0, 6) }}</strong></td>
             <td>{{ [v.year, v.make, v.model].filter(Boolean).join(' ') || '—' }}</td>
             <td class="muted">{{ pretty(v.body_class) }}<span class="muted small"> · {{ pretty(v.duty_band) }}</span></td>
@@ -211,9 +237,22 @@ watch(filters, load, { deep: true })
         </tbody>
       </table>
       <p v-else class="muted">No vehicles match these filters.</p>
-      <p v-if="!loading && vehicles.length" class="muted small" style="margin-top: 10px">
-        {{ vehicles.length }} shown · {{ assignable.length }} unassigned
-      </p>
+
+      <div v-if="!loading && vehicles.length" class="pager">
+        <span class="muted small">
+          {{ rangeFrom }}–{{ rangeTo }} of {{ vehicles.length }} · {{ assignable.length }} unassigned
+        </span>
+        <div class="pgbtns">
+          <button class="pg" :disabled="page === 1" aria-label="Previous page" @click="goTo(page - 1)">‹</button>
+          <button v-if="pageWindow[0] > 1" class="pg" @click="goTo(1)">1</button>
+          <span v-if="pageWindow[0] > 2" class="muted">…</span>
+          <button v-for="n in pageWindow" :key="n" class="pg" :class="{ on: n === page }" @click="goTo(n)">{{ n }}</button>
+          <span v-if="pageWindow[pageWindow.length - 1] < pageCount - 1" class="muted">…</span>
+          <button v-if="pageWindow[pageWindow.length - 1] < pageCount" class="pg" @click="goTo(pageCount)">{{ pageCount }}</button>
+          <button class="pg" :disabled="page === pageCount" aria-label="Next page" @click="goTo(page + 1)">›</button>
+        </div>
+        <div style="width: 150px"><Dropdown v-model="perPage" :options="perPageOptions" /></div>
+      </div>
     </div>
 
     <Dialog
@@ -256,7 +295,7 @@ watch(filters, load, { deep: true })
 </template>
 
 <style scoped>
-.page { max-width: 1140px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 16px; }
+.page { max-width: 1680px; margin: 0 auto; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 16px; }
 .head h1 { margin: 0; }
 .pad { padding: 20px; }
 .tiles { grid-template-columns: repeat(5, 1fr); }
@@ -269,7 +308,9 @@ watch(filters, load, { deep: true })
 .comp { grid-template-columns: repeat(3, 1fr); }
 .stack8 { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .brk { display: flex; flex-direction: column; gap: 5px; }
-.brktop { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.brktop { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; align-items: baseline; }
+/* Uppercase needs tracking and a smaller size to stay quiet next to the figures. */
+.bkey { font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
 .mono { font-variant-numeric: tabular-nums; }
 .track { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
 .fill { height: 100%; border-radius: 999px; background: #1d5cb0; min-width: 2px; }
@@ -287,6 +328,16 @@ watch(filters, load, { deep: true })
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .pill.role { background: #e9eef6; color: var(--muted); }
 .err { color: var(--risk); }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.pgbtns { display: flex; align-items: center; gap: 4px; }
+.pg {
+  min-width: 32px; height: 32px; padding: 0 9px; border: 1px solid var(--line-strong);
+  border-radius: 8px; background: var(--panel); font-size: 13px; color: var(--ink-soft);
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.pg:hover:not(:disabled) { border-color: var(--muted); color: var(--ink); }
+.pg.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.pg:disabled { opacity: 0.4; cursor: not-allowed; }
 @media (max-width: 1000px) { .comp { grid-template-columns: 1fr; } }
 @media (max-width: 900px) { .tiles, .three, .two { grid-template-columns: repeat(2, 1fr); } }
 </style>

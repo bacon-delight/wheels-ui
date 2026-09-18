@@ -110,7 +110,7 @@ watch(() => route.params.cid, load)
           <router-link class="btn-link" :to="`/vehicles?customer_id=${customer.customer_id}`">See all →</router-link>
         </div>
         <div v-if="byDuty.length" class="row bands">
-          <span v-for="[band, n] in byDuty" :key="band" class="pill role">{{ band.replace('_', ' ').toLowerCase() }} · {{ n }}</span>
+          <span v-for="[band, n] in byDuty" :key="band" class="pill role">{{ band.replace('_', ' ').toLowerCase() }} <b>{{ n }}</b></span>
         </div>
         <table v-if="vehicles.length" class="vtab">
           <thead><tr><th>Unit</th><th>Vehicle</th><th>Type</th><th>Ownership</th><th>Status</th></tr></thead>
@@ -167,7 +167,7 @@ watch(() => route.params.cid, load)
 </template>
 
 <style scoped>
-.page { max-width: 1000px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 16px; }
+.page { max-width: 1680px; margin: 0 auto; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 16px; }
 .back { font-size: 13px; }
 .chead h1 { margin: 0; }
 .pad { padding: 20px; }
@@ -180,7 +180,13 @@ watch(() => route.params.cid, load)
 .vtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vtab th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); }
 .vtab td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); }
-.pill.role { background: #e9eef6; color: var(--muted); }
+.pill.role {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: var(--accent-weak); color: var(--accent-ink);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px;
+}
+.pill.role b { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .crow { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .avatar { width: 32px; height: 32px; border-radius: 9px; background: var(--accent-weak); color: var(--accent-ink); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
 .cinfo { flex: 1; display: flex; flex-direction: column; }

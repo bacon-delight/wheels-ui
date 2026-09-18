@@ -145,7 +145,7 @@ export const useEngagementStore = defineStore('engagement', {
       this.busy = 'invite'
       this.err = ''
       try {
-        // Engagement invites are always client reviewers; provider staff live under Users.
+        // Engagement invites are always customer reviewers; provider staff live under Users.
         await api.post(`/engagements/${this.eid}/invitations`, { email, name: name || null })
         await this.load(this.eid)
       } catch (e) {

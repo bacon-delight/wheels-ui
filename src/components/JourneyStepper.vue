@@ -7,7 +7,7 @@ const STEPS = [
   { label: 'Draft', sub: 'Upload agreements' },
   { label: 'Extraction', sub: 'AI reads terms' },
   { label: 'Underwriting', sub: 'Analyst review' },
-  { label: 'Client approval', sub: 'Client signs off' },
+  { label: 'Customer approval', sub: 'Customer signs off' },
   { label: 'Finance approval', sub: 'Finance validates' },
   { label: 'Billing', sub: 'Config generated' },
 ]

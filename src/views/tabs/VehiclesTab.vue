@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 
+import Dialog from '../../components/Dialog.vue'
 import { api } from '../../services/api'
 import { useEngagementStore } from '../../stores/engagement'
 
@@ -94,9 +95,7 @@ onMounted(load)
             <span v-if="data?.fleet_size_source === 'override'" class="muted">(manual override)</span>
           </p>
         </div>
-        <button v-if="eng.isProvider" class="primary" @click="picking ? (picking = false) : openPicker()">
-          {{ picking ? 'Cancel' : '＋ Assign vehicles' }}
-        </button>
+        <button v-if="eng.isProvider" class="primary nowrap" @click="openPicker">＋ Assign vehicles</button>
       </div>
 
       <div v-if="byDuty.length" class="row bands">
@@ -105,26 +104,6 @@ onMounted(load)
       <p v-if="err" class="err">{{ err }}</p>
     </div>
 
-    <div v-if="picking" class="card pad">
-      <h2>Available to lease</h2>
-      <p class="muted small" style="margin: -8px 0 12px">Only Wheels-owned units in stock can be leased out. Customer-owned units are added from the Vehicles page.</p>
-      <table v-if="pool.length" class="vtab">
-        <thead><tr><th style="width: 28px"></th><th>Unit</th><th>Vehicle</th><th>Type</th><th>Power</th></tr></thead>
-        <tbody>
-          <tr v-for="v in pool" :key="v.vehicle_id">
-            <td><input type="checkbox" :checked="chosen.has(v.vehicle_id)" @change="toggle(v.vehicle_id)" /></td>
-            <td><strong>{{ v.unit_number || v.vin || v.vehicle_id.slice(0, 6) }}</strong></td>
-            <td>{{ [v.year, v.make, v.model].filter(Boolean).join(' ') || '—' }}</td>
-            <td class="muted">{{ pretty(v.body_class) }}</td>
-            <td class="muted">{{ v.powertrain }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="muted">Nothing in stock. Add vehicles from the Vehicles page first.</p>
-      <button v-if="pool.length" class="primary" style="margin-top: 12px" :disabled="!chosen.size || busy === 'assign'" @click="assign">
-        {{ busy === 'assign' ? 'Assigning…' : `Assign ${chosen.size} vehicle${chosen.size === 1 ? '' : 's'}` }}
-      </button>
-    </div>
 
     <div class="card pad">
       <p v-if="loading" class="muted">Loading…</p>
@@ -143,12 +122,43 @@ onMounted(load)
       </table>
       <p v-else class="muted">No vehicles assigned yet. The billed fleet size follows this list unless it is overridden.</p>
     </div>
+
+    <Dialog
+      :open="picking"
+      title="Assign vehicles"
+      subtitle="Only Wheels-owned units in stock can be leased out. Customer-owned units are added from the Vehicles page."
+      wide
+      @close="picking = false"
+    >
+      <table v-if="pool.length" class="vtab">
+        <thead><tr><th style="width: 28px"></th><th>Unit</th><th>Vehicle</th><th>Type</th><th>Power</th></tr></thead>
+        <tbody>
+          <tr v-for="v in pool" :key="v.vehicle_id">
+            <td><input type="checkbox" :checked="chosen.has(v.vehicle_id)" @change="toggle(v.vehicle_id)" /></td>
+            <td><strong>{{ v.unit_number || v.vin || v.vehicle_id.slice(0, 6) }}</strong></td>
+            <td>{{ [v.year, v.make, v.model].filter(Boolean).join(' ') || '—' }}</td>
+            <td class="muted">{{ pretty(v.body_class) }}</td>
+            <td class="muted">{{ v.powertrain }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="muted">Nothing in stock. Add vehicles from the Vehicles page first.</p>
+      <template #footer>
+        <span class="muted small">{{ chosen.size }} of {{ pool.length }} selected</span>
+        <span class="sp" />
+        <button class="ghost" @click="picking = false">Cancel</button>
+        <button class="primary" :disabled="!chosen.size || busy === 'assign'" @click="assign">
+          {{ busy === 'assign' ? 'Assigning…' : `Assign ${chosen.size} vehicle${chosen.size === 1 ? '' : 's'}` }}
+        </button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <style scoped>
 .pad { padding: 20px; }
 .bands { gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.nowrap { white-space: nowrap; }
 .vtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vtab th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--line); }
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }

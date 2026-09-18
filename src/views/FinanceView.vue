@@ -290,8 +290,13 @@ onMounted(load)
 
 .card { margin-bottom: 18px; }
 .pad { padding: 20px 22px; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
-.two > .card { margin-bottom: 18px; }
+/* Stretch, not start: paired cards share a row, so a short one next to a tall one read as a
+   layout mistake. Each card lays out as a column so its list can take the slack. */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; margin-bottom: 18px; }
+.two > .card { margin-bottom: 0; display: flex; flex-direction: column; }
+.two > .card > .ranks, .two > .card > .funnel { flex: 1; }
+/* Empty states still need enough body to look deliberate rather than broken. */
+.two > .card { min-height: 260px; }
 
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-soft); }
 .lg { display: inline-flex; align-items: center; gap: 6px; }
@@ -305,7 +310,8 @@ onMounted(load)
 .tip { display: flex; gap: 16px; align-items: center; font-size: 12px; margin-top: 8px; color: var(--ink-soft); }
 .tip span { display: inline-flex; align-items: center; gap: 6px; }
 
-.ranks { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.ranks { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; justify-content: flex-start; }
+.ranks > .muted { margin: auto 0; text-align: center; color: var(--muted); }
 .rank { display: flex; gap: 10px; align-items: flex-start; }
 .rk { width: 20px; flex-shrink: 0; text-align: right; font-size: 12px; font-weight: 700; color: var(--muted); padding-top: 2px; }
 .rbody { flex: 1; min-width: 0; }
@@ -328,6 +334,7 @@ onMounted(load)
 .seg.d61_90, .swatch.d61_90 { background: #c9512f; }
 .seg.d90_plus, .swatch.d90_plus { background: #a32d2d; }
 .mini { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mini td { vertical-align: middle; }
 .mini td { padding: 6px 0; border-top: 1px solid var(--line); }
 .riskrow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
 

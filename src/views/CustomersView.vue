@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import Dialog from '../components/Dialog.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 
@@ -56,22 +57,7 @@ onMounted(load)
         <h1>Customers</h1>
         <p class="muted" style="margin: 4px 0 0">Each customer holds every engagement they have signed with Wheels.</p>
       </div>
-      <button v-if="auth.isProvider" class="primary" @click="showNew = !showNew">
-        {{ showNew ? 'Cancel' : '＋ New customer' }}
-      </button>
-    </div>
-
-    <div v-if="showNew && auth.isProvider" class="card pad" style="margin-bottom: 18px">
-      <h2>New customer</h2>
-      <div class="grid two">
-        <label class="fld"><span class="label">Legal name</span><input v-model="form.legal_name" placeholder="Apex Pvt Ltd" /></label>
-        <label class="fld"><span class="label">Industry</span><input v-model="form.industry" placeholder="Logistics" /></label>
-        <label class="fld"><span class="label">City</span><input v-model="form.city" placeholder="Bangalore" /></label>
-        <label class="fld"><span class="label">Billing contact</span><input v-model="form.primary_contact_email" placeholder="ap@apex.com" /></label>
-      </div>
-      <button class="primary" style="margin-top: 14px" :disabled="creating || !form.legal_name.trim()" @click="create">
-        {{ creating ? 'Creating…' : 'Create customer' }}
-      </button>
+      <button v-if="auth.isProvider" class="primary nowrap" @click="showNew = true">＋ New customer</button>
     </div>
 
     <input v-if="customers.length" v-model="q" placeholder="Search customers…" style="max-width: 320px; margin-bottom: 16px" />
@@ -93,6 +79,27 @@ onMounted(load)
       </router-link>
       <p v-if="!filtered.length" class="muted">{{ customers.length ? 'No customers match that search.' : 'No customers yet.' }}</p>
     </div>
+
+    <Dialog
+      :open="showNew"
+      title="New customer"
+      subtitle="A customer holds every engagement they sign with Wheels, so create them once and add engagements underneath."
+      @close="showNew = false"
+    >
+      <div class="grid two">
+        <label class="fld"><span class="label">Legal name</span><input v-model="form.legal_name" placeholder="Apex Field Services LLC" /></label>
+        <label class="fld"><span class="label">Industry</span><input v-model="form.industry" placeholder="Field services" /></label>
+        <label class="fld"><span class="label">City</span><input v-model="form.city" placeholder="Austin" /></label>
+        <label class="fld"><span class="label">Billing contact</span><input v-model="form.primary_contact_email" placeholder="ap@apex.com" /></label>
+      </div>
+      <template #footer>
+        <span class="sp" />
+        <button class="ghost" @click="showNew = false">Cancel</button>
+        <button class="primary" :disabled="creating || !form.legal_name.trim()" @click="create">
+          {{ creating ? 'Creating…' : 'Create customer' }}
+        </button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -109,4 +116,5 @@ onMounted(load)
 .sub { margin: 0 0 12px; font-size: 13px; }
 .stats { gap: 8px; font-size: 13px; }
 .err { color: var(--risk); }
+.nowrap { white-space: nowrap; }
 </style>

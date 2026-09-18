@@ -107,7 +107,7 @@ watch(() => route.params.cid, load)
           </div>
           <span class="muted small">{{ c.engagement_name }}</span>
         </div>
-        <p v-if="!contacts.length" class="muted">No client contacts invited yet.</p>
+        <p v-if="!contacts.length" class="muted">No customer contacts invited yet.</p>
       </div>
     </template>
   </div>

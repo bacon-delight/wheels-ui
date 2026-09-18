@@ -155,7 +155,7 @@ async function approveAll() {
 }
 
 onMounted(() => {
-  // The split-screen is a provider underwriting tool; clients get the clean terms view.
+  // The split-screen is a provider underwriting tool; customers get the clean terms view.
   if (!auth.isProvider) {
     router.replace(`/engagements/${eid}`)
     return
@@ -296,12 +296,12 @@ onMounted(() => {
     <SidePanel
       :open="reviewOpen"
       title="Change verification"
-      subtitle="What the re-uploaded agreement actually changed, against what the client asked for."
+      subtitle="What the re-uploaded agreement actually changed, against what the customer asked for."
       @close="reviewOpen = false"
     >
       <template v-if="review">
         <div v-if="review.requested" class="crask">
-          <div class="label">Client asked</div>
+          <div class="label">Customer asked</div>
           <p>“{{ review.requested }}”</p>
         </div>
         <p v-if="review.overall" class="croverall">{{ review.overall }}</p>

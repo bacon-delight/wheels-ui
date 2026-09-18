@@ -37,10 +37,10 @@ watch(() => [props.sid, props.status], load, { immediate: true })
   <div v-if="data && data.applicable" class="card pad cr" :class="{ crscroll: inReview }">
     <div class="spread" style="margin-bottom: 6px">
       <h2 style="margin: 0">Change verification</h2>
-      <span class="badge info">Re-upload vs client request</span>
+      <span class="badge info">Re-upload vs customer request</span>
     </div>
     <p v-if="data.requested" class="muted small" style="margin: 0 0 8px">
-      Client asked: <em>“{{ data.requested }}”</em>
+      Customer asked: <em>“{{ data.requested }}”</em>
     </p>
     <p v-if="data.overall" class="overall">{{ data.overall }}</p>
 

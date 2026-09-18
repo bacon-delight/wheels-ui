@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
+import Dialog from '../components/Dialog.vue'
 import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
@@ -66,30 +67,11 @@ onMounted(load)
     <div class="spread head">
       <div>
         <h1>Engagements</h1>
-        <p class="muted" style="margin: 4px 0 0">Client onboarding &amp; billing-term review</p>
+        <p class="muted" style="margin: 4px 0 0">Customer onboarding &amp; billing-term review</p>
       </div>
-      <button v-if="auth.isProvider" class="primary" @click="showNew = !showNew">＋ New engagement</button>
+      <button v-if="auth.isProvider" class="primary" @click="showNew = true">＋ New engagement</button>
     </div>
 
-    <div v-if="showNew && auth.isProvider" class="card np">
-      <div class="row wrap">
-        <input v-model="name" placeholder="Engagement name — e.g. Spring lease" style="min-width: 240px" />
-        <select v-model="customerId" style="min-width: 220px">
-          <option value="">Select customer…</option>
-          <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
-        </select>
-        <select v-model="scope" style="min-width: 180px">
-          <option v-for="(label, key) in SCOPE_LABELS" :key="key" :value="key">{{ label }}</option>
-        </select>
-        <button class="primary" :disabled="!name || !customerId || creating" @click="create">
-          {{ creating ? 'Creating…' : 'Create' }}
-        </button>
-      </div>
-      <p class="muted small" style="margin: 10px 0 0">
-        Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both.
-        No customer yet? <router-link to="/customers">Add one first</router-link>.
-      </p>
-    </div>
 
     <div v-if="auth.isProvider && customers.length" class="row" style="margin-bottom: 14px">
       <select v-model="filterCustomer" style="max-width: 260px">
@@ -112,6 +94,41 @@ onMounted(load)
       </router-link>
       <p v-if="!shown.length" class="muted">{{ engagements.length ? 'No engagements for that customer.' : 'No engagements yet.' }}</p>
     </div>
+
+    <Dialog
+      :open="showNew"
+      title="New engagement"
+      subtitle="Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both."
+      @close="showNew = false"
+    >
+      <label class="fld">
+        <span class="label">Engagement name</span>
+        <input v-model="name" placeholder="Spring lease — 40 units" />
+      </label>
+      <label class="fld" style="margin-top: 14px">
+        <span class="label">Customer</span>
+        <select v-model="customerId">
+          <option value="">Select customer…</option>
+          <option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option>
+        </select>
+      </label>
+      <label class="fld" style="margin-top: 14px">
+        <span class="label">Scope</span>
+        <select v-model="scope">
+          <option v-for="(label, key) in SCOPE_LABELS" :key="key" :value="key">{{ label }}</option>
+        </select>
+      </label>
+      <p class="muted small" style="margin: 14px 0 0">
+        No customer yet? <router-link to="/customers">Add one first</router-link>.
+      </p>
+      <template #footer>
+        <span class="sp" />
+        <button class="ghost" @click="showNew = false">Cancel</button>
+        <button class="primary" :disabled="!name || !customerId || creating" @click="create">
+          {{ creating ? 'Creating…' : 'Create engagement' }}
+        </button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -120,7 +137,7 @@ onMounted(load)
 .head { margin-bottom: 24px; }
 .np { padding: 16px; margin-bottom: 20px; }
 .err { color: var(--risk); }
-.row.wrap { flex-wrap: wrap; }
+.fld { display: flex; flex-direction: column; gap: 6px; }
 .meta { margin-top: 4px; }
 .cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .ecard { padding: 20px; text-decoration: none; color: inherit; display: block; transition: all 0.12s; }

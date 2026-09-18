@@ -34,6 +34,7 @@ const initials = computed(() =>
     <aside class="sidebar">
       <div class="logo">
         <img :src="logo" alt="Wheels" />
+        <div class="product">Contract Intelligence</div>
       </div>
 
       <nav class="nav">
@@ -58,7 +59,7 @@ const initials = computed(() =>
         <div class="avatar">{{ initials }}</div>
         <div class="uinfo">
           <div class="uname">{{ auth.name }}</div>
-          <div class="urole">{{ auth.isProvider ? 'Provider' : 'Client' }}</div>
+          <div class="urole">{{ auth.isProvider ? 'Platform Employee' : 'Customer' }}</div>
         </div>
         <button class="ghost sm" title="Sign out" @click="auth.logout()">↪</button>
       </div>
@@ -77,9 +78,13 @@ const initials = computed(() =>
   border-right: 1px solid var(--brand);
   padding: 20px 16px;
 }
-/* The logo artwork shares the sidebar's brand-blue background, so it sits flush with no visible tile. */
-.logo { display: flex; align-items: center; padding: 2px 6px 18px; }
-.logo img { width: 150px; height: auto; display: block; }
+/* The logo artwork shares the sidebar's brand-blue background, so it sits flush with no tile. */
+.logo { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 6px 20px; }
+.logo img { width: 104px; height: auto; display: block; }
+.product {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--sky); text-align: center;
+}
 .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .navitem {
   display: flex; align-items: center; gap: 11px;
@@ -102,7 +107,7 @@ const initials = computed(() =>
 }
 .uinfo { flex: 1; min-width: 0; }
 .uname { font-weight: 600; font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.urole { font-size: 12px; color: var(--sky); }
+.urole { font-size: 11px; color: var(--sky); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .content { overflow-y: auto; }
 .loading { display: grid; place-items: center; height: 100vh; color: var(--muted); }
 @media (max-width: 720px) {

@@ -15,9 +15,9 @@ const events = ref([])
 const ACTION_LABEL = {
   submit_for_processing: 'Submitted for extraction',
   pipeline_done: 'Extraction complete',
-  submit_to_client: 'Submitted to client',
-  client_approve: 'Client approved terms',
-  client_request_changes: 'Client requested changes',
+  submit_to_client: 'Submitted to customer',
+  client_approve: 'Customer approved terms',
+  client_request_changes: 'Customer requested changes',
   reupload: 'Document re-uploaded',
   sanity_pass: 'Sanity checks passed',
   sanity_fail: 'Sanity checks failed',
@@ -47,8 +47,8 @@ onMounted(async () => {
 
 const LABELS = {
   DRAFT: 'Draft', EXTRACTING: 'Extracting terms', IN_UNDERWRITING: 'In underwriting review',
-  PENDING_CLIENT_APPROVAL: 'Awaiting client approval', CHANGES_REQUESTED_CLIENT: 'Client requested changes',
-  REVALIDATING: 'Re-validating', VALIDATION_FAILED: 'Validation failed', CLIENT_APPROVED: 'Client approved',
+  PENDING_CLIENT_APPROVAL: 'Awaiting customer approval', CHANGES_REQUESTED_CLIENT: 'Customer requested changes',
+  REVALIDATING: 'Re-validating', VALIDATION_FAILED: 'Validation failed', CLIENT_APPROVED: 'Customer approved',
   PENDING_FINANCE_APPROVAL: 'Awaiting finance', CHANGES_REQUESTED_FINANCE: 'Finance requested changes',
   FINANCE_APPROVED: 'Finance approved', BILLING_SETUP: 'Setting up billing', ACTIVE: 'Active',
 }
@@ -64,10 +64,10 @@ const nextHint = computed(() => {
       if (missing.length) return `Upload the ${missing.join(' and ')} and run extraction.`
       return 'Run extraction on the uploaded agreements.'
     }
-    if (s === 'IN_UNDERWRITING') return 'Review and approve the extracted terms, then submit to the client.'
-    if (s === 'PENDING_FINANCE_APPROVAL') return 'Validate the client-approved terms as finance.'
+    if (s === 'IN_UNDERWRITING') return 'Review and approve the extracted terms, then submit to the customer.'
+    if (s === 'PENDING_FINANCE_APPROVAL') return 'Validate the customer-approved terms as finance.'
     if (s === 'FINANCE_APPROVED') return 'Generate the billing configuration.'
-    if (s === 'PENDING_CLIENT_APPROVAL') return 'Waiting on the client to approve the terms.'
+    if (s === 'PENDING_CLIENT_APPROVAL') return 'Waiting on the customer to approve the terms.'
     return null
   }
   if (s === 'PENDING_CLIENT_APPROVAL') return 'Review the proposed terms and approve, or request changes.'
@@ -77,7 +77,7 @@ const nextHint = computed(() => {
 
 <template>
   <div class="stack">
-    <!-- Provider's response to the client's change request -->
+    <!-- Response to the customer's change request -->
     <div v-if="!eng.isProvider && eng.status === 'PENDING_CLIENT_APPROVAL' && eng.submission?.latest_comment" class="card pad response">
       <div class="rhead">💬 Response from {{ eng.submission?.latest_comment_by || 'your provider' }}</div>
       <p class="rbody">“{{ eng.submission.latest_comment }}”</p>

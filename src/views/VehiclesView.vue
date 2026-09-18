@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import Dialog from '../components/Dialog.vue'
 import { api } from '../services/api'
 
 const route = useRoute()
@@ -30,7 +31,7 @@ const showNew = ref(false)
 const form = ref({
   unit_number: '', vin: '', year: null, make: '', model: '',
   body_class: 'SEDAN', powertrain: 'ICE', ownership: 'WHEELS_OWNED',
-  customer_id: '', lease_structure: '', lease_term_months: null,
+  customer_id: '', lease_structure: '', lease_term_months: null, odometer: null,
 })
 
 const pretty = (v) => (v || '').replace(/_/g, ' ').toLowerCase()
@@ -130,7 +131,7 @@ watch(filters, load, { deep: true })
         <h1>Vehicles</h1>
         <p class="muted" style="margin: 4px 0 0">The fleet Wheels owns, plus customer-owned units we service.</p>
       </div>
-      <button class="primary" @click="showNew = !showNew">{{ showNew ? 'Cancel' : '＋ Add vehicle' }}</button>
+      <button class="primary nowrap" @click="showNew = true">＋ Add vehicle</button>
     </div>
 
     <div v-if="summary" class="grid tiles">
@@ -138,30 +139,6 @@ watch(filters, load, { deep: true })
       <div class="stattile"><div class="label">Available to lease</div><div class="val">{{ summary.available_to_lease }}</div></div>
       <div class="stattile"><div class="label">Assigned</div><div class="val">{{ summary.assigned }}</div></div>
       <div class="stattile"><div class="label">Customer-owned</div><div class="val">{{ summary.customer_owned }}</div></div>
-    </div>
-
-    <div v-if="showNew" class="card pad">
-      <h2>Add vehicle</h2>
-      <div class="grid four">
-        <label class="fld"><span class="label">Unit number</span><input v-model="form.unit_number" placeholder="A-104" /></label>
-        <label class="fld"><span class="label">VIN</span><input v-model="form.vin" placeholder="1FT…" /></label>
-        <label class="fld"><span class="label">Year</span><input v-model.number="form.year" type="number" placeholder="2025" /></label>
-        <label class="fld"><span class="label">Make</span><input v-model="form.make" placeholder="Ford" /></label>
-        <label class="fld"><span class="label">Model</span><input v-model="form.model" placeholder="F-150" /></label>
-        <label class="fld"><span class="label">Body class</span><select v-model="form.body_class"><option v-for="b in BODY_CLASSES" :key="b" :value="b">{{ pretty(b) }}</option></select></label>
-        <label class="fld"><span class="label">Powertrain</span><select v-model="form.powertrain"><option v-for="p in POWERTRAINS" :key="p" :value="p">{{ p }}</option></select></label>
-        <label class="fld"><span class="label">Ownership</span><select v-model="form.ownership"><option value="WHEELS_OWNED">Wheels owned</option><option value="CUSTOMER_OWNED">Customer owned (service only)</option></select></label>
-        <template v-if="form.ownership === 'CUSTOMER_OWNED'">
-          <label class="fld"><span class="label">Customer</span><select v-model="form.customer_id"><option value="">Select…</option><option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option></select></label>
-        </template>
-        <template v-else>
-          <label class="fld"><span class="label">Lease structure</span><select v-model="form.lease_structure"><option value="">—</option><option v-for="l in LEASE_STRUCTURES" :key="l" :value="l">{{ pretty(l) }}</option></select></label>
-          <label class="fld"><span class="label">Term (months)</span><input v-model.number="form.lease_term_months" type="number" min="24" max="120" placeholder="36" /></label>
-        </template>
-      </div>
-      <button class="primary" style="margin-top: 14px" :disabled="busy === 'create'" @click="create">
-        {{ busy === 'create' ? 'Adding…' : 'Add vehicle' }}
-      </button>
     </div>
 
     <div class="card pad">
@@ -219,6 +196,43 @@ watch(filters, load, { deep: true })
         {{ vehicles.length }} shown · {{ assignable.length }} unassigned
       </p>
     </div>
+
+    <Dialog
+      :open="showNew"
+      title="Add vehicle"
+      subtitle="Wheels-owned units enter stock and can be leased out. Customer-owned units are third-party: we service them, we never lease them."
+      wide
+      @close="showNew = false"
+    >
+      <div class="grid three">
+        <label class="fld"><span class="label">Unit number</span><input v-model="form.unit_number" placeholder="WH-0104" /></label>
+        <label class="fld"><span class="label">VIN</span><input v-model="form.vin" placeholder="1FTFW1E5XPKD12345" /></label>
+        <label class="fld"><span class="label">Year</span><input v-model.number="form.year" type="number" placeholder="2025" /></label>
+        <label class="fld"><span class="label">Make</span><input v-model="form.make" placeholder="Ford" /></label>
+        <label class="fld"><span class="label">Model</span><input v-model="form.model" placeholder="F-150" /></label>
+        <label class="fld"><span class="label">Body class</span><select v-model="form.body_class"><option v-for="b in BODY_CLASSES" :key="b" :value="b">{{ pretty(b) }}</option></select></label>
+        <label class="fld"><span class="label">Powertrain</span><select v-model="form.powertrain"><option v-for="p in POWERTRAINS" :key="p" :value="p">{{ p }}</option></select></label>
+        <label class="fld"><span class="label">Odometer</span><input v-model.number="form.odometer" type="number" placeholder="12000" /></label>
+        <label class="fld"><span class="label">Ownership</span><select v-model="form.ownership"><option value="WHEELS_OWNED">Wheels owned</option><option value="CUSTOMER_OWNED">Customer owned</option></select></label>
+      </div>
+      <div class="grid two" style="margin-top: 14px">
+        <template v-if="form.ownership === 'CUSTOMER_OWNED'">
+          <label class="fld"><span class="label">Customer</span><select v-model="form.customer_id"><option value="">Select…</option><option v-for="c in customers" :key="c.customer_id" :value="c.customer_id">{{ c.legal_name }}</option></select></label>
+        </template>
+        <template v-else>
+          <label class="fld"><span class="label">Lease structure</span><select v-model="form.lease_structure"><option value="">—</option><option v-for="l in LEASE_STRUCTURES" :key="l" :value="l">{{ pretty(l) }}</option></select></label>
+          <label class="fld"><span class="label">Term (months)</span><input v-model.number="form.lease_term_months" type="number" min="24" max="120" placeholder="36" /></label>
+        </template>
+      </div>
+      <p v-if="err && showNew" class="err" style="margin-top: 14px">{{ err }}</p>
+      <template #footer>
+        <span class="sp" />
+        <button class="ghost" @click="showNew = false">Cancel</button>
+        <button class="primary" :disabled="busy === 'create'" @click="create">
+          {{ busy === 'create' ? 'Adding…' : 'Add vehicle' }}
+        </button>
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -227,7 +241,9 @@ watch(filters, load, { deep: true })
 .head h1 { margin: 0; }
 .pad { padding: 20px; }
 .tiles { grid-template-columns: repeat(4, 1fr); }
-.four { grid-template-columns: repeat(4, 1fr); }
+.three { grid-template-columns: repeat(3, 1fr); }
+.two { grid-template-columns: repeat(2, 1fr); }
+.nowrap { white-space: nowrap; }
 .fld { display: flex; flex-direction: column; gap: 6px; }
 .filters { gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .filters .fld { min-width: 150px; }
@@ -237,5 +253,5 @@ watch(filters, load, { deep: true })
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .pill.role { background: #e9eef6; color: var(--muted); }
 .err { color: var(--risk); }
-@media (max-width: 900px) { .tiles, .four { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 900px) { .tiles, .three, .two { grid-template-columns: repeat(2, 1fr); } }
 </style>

@@ -78,10 +78,12 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 45;
-  background: rgba(4, 20, 65, 0.28);
+  background: rgba(4, 20, 65, 0.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  transition: opacity 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .spscrim.is-open { opacity: 1; pointer-events: auto; }
 

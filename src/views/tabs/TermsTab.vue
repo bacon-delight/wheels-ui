@@ -148,7 +148,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Change verification: did the re-uploaded terms reflect the client's request? -->
+    <!-- Change verification: did the re-uploaded terms reflect the customer's request? -->
     <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
 
     <!-- Fleet size — finalized during approval, drives recurring dues -->
@@ -192,23 +192,23 @@ onMounted(() => {
     <div class="card pad" v-if="['IN_UNDERWRITING', 'FINANCE_APPROVED'].includes(eng.status)">
       <h2>Next step</h2>
       <div v-if="eng.status === 'IN_UNDERWRITING'">
-        <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to client' }}</button>
+        <button class="primary" :disabled="!!eng.busy || !eng.allApproved" @click="eng.action('submit-to-client')">{{ eng.busy === 'submit-to-client' ? 'Submitting…' : 'Submit terms to customer' }}</button>
         <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>
       </div>
       <button v-else-if="eng.status === 'FINANCE_APPROVED'" class="primary" :disabled="!!eng.busy" @click="eng.action('setup-billing')">{{ eng.busy === 'setup-billing' ? 'Generating…' : 'Set up billing' }}</button>
     </div>
 
-    <!-- Finance validation: an independent review after the client accepts (never pre-approved) -->
+    <!-- Finance validation: an independent review after the customer accepts (never pre-approved) -->
     <div class="card pad finance" v-if="eng.status === 'PENDING_FINANCE_APPROVAL'">
       <div class="spread" style="align-items: flex-start; margin-bottom: 4px">
         <h2 style="margin: 0">Finance validation</h2>
         <span class="badge info">Independent review</span>
       </div>
       <p class="muted small" style="margin: 0 0 12px; max-width: 620px">
-        The client has accepted these terms. Finance must independently review and validate them before billing is set up — approval is never automatic. Review the proposed terms above and the <router-link :to="{ name: 'eng-summary', params: { eid } }">negotiation summary</router-link>.
+        The customer has accepted these terms. Finance must independently review and validate them before billing is set up — approval is never automatic. Review the proposed terms above and the <router-link :to="{ name: 'eng-summary', params: { eid } }">negotiation summary</router-link>.
       </p>
       <div v-if="financeMode === 'idle'" class="stack" style="gap: 12px">
-        <label class="ack"><input type="checkbox" v-model="financeChecked" /> I have independently reviewed the client-approved terms and confirm they are correct.</label>
+        <label class="ack"><input type="checkbox" v-model="financeChecked" /> I have independently reviewed the customer-approved terms and confirm they are correct.</label>
         <div class="row">
           <button class="primary" :disabled="!financeChecked || !!eng.busy" @click="financeApprove">{{ eng.busy === 'finance-approve' ? 'Approving…' : 'Approve terms (finance)' }}</button>
           <button :disabled="!!eng.busy" @click="financeMode = 'changes'">Request changes</button>
@@ -223,14 +223,14 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Client requested changes -->
+    <!-- Customer requested changes -->
     <div class="card pad" v-if="eng.status === 'CHANGES_REQUESTED_CLIENT'">
-      <h2>Client requested changes</h2>
-      <p class="req">“{{ eng.submission?.latest_comment || 'The client asked for changes.' }}”</p>
+      <h2>Customer requested changes</h2>
+      <p class="req">“{{ eng.submission?.latest_comment || 'The customer asked for changes.' }}”</p>
       <div class="opts">
         <div class="opt">
           <strong>Re-upload the updated agreement</strong>
-          <p class="muted small">Upload a revised document, add a note for the client, then re-validate.</p>
+          <p class="muted small">Upload a revised document, add a note for the customer, then re-validate.</p>
           <div class="row">
             <label v-for="type in eng.docTypes" :key="type" class="btn-link">Upload {{ type }}<input type="file" accept="application/pdf" hidden @change="onUpload(type, $event)" /></label>
             <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>

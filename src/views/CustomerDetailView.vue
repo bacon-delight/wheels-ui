@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import Dialog from '../components/Dialog.vue'
+import Dropdown from '../components/Dropdown.vue'
 import StatusPill from '../components/StatusPill.vue'
 import { api } from '../services/api'
 import { SCOPE_LABELS } from '../stores/engagement'
@@ -10,6 +12,10 @@ const route = useRoute()
 const data = ref(null)
 const loading = ref(true)
 const err = ref('')
+const showNew = ref(false)
+const creating = ref(false)
+const form = ref({ name: '', scope: 'LEASE_AND_SERVICE' })
+const scopeOptions = Object.entries(SCOPE_LABELS).map(([value, label]) => ({ value, label }))
 
 const customer = computed(() => data.value?.customer)
 const engagements = computed(() => data.value?.engagements || [])
@@ -33,6 +39,25 @@ async function load() {
     err.value = e.response?.data?.detail || e.message
   }
   loading.value = false
+}
+
+// The customer is already known here, so the dialog only asks for what is left.
+async function createEngagement() {
+  creating.value = true
+  try {
+    await api.post('/engagements', {
+      name: form.value.name.trim(),
+      customer_id: route.params.cid,
+      scope: form.value.scope,
+    })
+    form.value = { name: '', scope: 'LEASE_AND_SERVICE' }
+    showNew.value = false
+    await load()
+    err.value = ''
+  } catch (e) {
+    err.value = e.response?.data?.detail || e.message
+  }
+  creating.value = false
 }
 
 onMounted(load)
@@ -62,8 +87,13 @@ watch(() => route.params.cid, load)
       </div>
 
       <div class="card pad">
-        <h2>Engagements</h2>
-        <p class="muted small" style="margin: -8px 0 12px">A customer signs a new engagement each time they lease more vehicles or add services.</p>
+        <div class="spread" style="align-items: flex-start">
+          <div>
+            <h2 style="margin: 0">Engagements</h2>
+            <p class="muted small" style="margin: 6px 0 12px">A customer signs a new engagement each time they lease more vehicles or add services.</p>
+          </div>
+          <button class="primary nowrap" @click="showNew = true">＋ New engagement</button>
+        </div>
         <router-link v-for="e in engagements" :key="e.engagement_id" class="erow" :to="`/engagements/${e.engagement_id}`">
           <div class="einfo">
             <strong>{{ e.name }}</strong>
@@ -109,6 +139,29 @@ watch(() => route.params.cid, load)
         </div>
         <p v-if="!contacts.length" class="muted">No customer contacts invited yet.</p>
       </div>
+
+      <Dialog
+        :open="showNew"
+        title="New engagement"
+        :subtitle="`For ${customer.legal_name}. Scope decides which agreements apply: lease needs the MLA, service needs the MSA, both need both.`"
+        @close="showNew = false"
+      >
+        <label class="fld">
+          <span class="label">Engagement name</span>
+          <input v-model="form.name" placeholder="Spring lease — 40 units" @keyup.enter="createEngagement" />
+        </label>
+        <label class="fld" style="margin-top: 14px">
+          <span class="label">Scope</span>
+          <Dropdown v-model="form.scope" :options="scopeOptions" />
+        </label>
+        <template #footer>
+          <span class="sp" />
+          <button class="ghost" @click="showNew = false">Cancel</button>
+          <button class="primary" :disabled="creating || !form.name.trim()" @click="createEngagement">
+            {{ creating ? 'Creating…' : 'Create engagement' }}
+          </button>
+        </template>
+      </Dialog>
     </template>
   </div>
 </template>
@@ -132,5 +185,7 @@ watch(() => route.params.cid, load)
 .avatar { width: 32px; height: 32px; border-radius: 9px; background: var(--accent-weak); color: var(--accent-ink); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
 .cinfo { flex: 1; display: flex; flex-direction: column; }
 .err { color: var(--risk); }
+.nowrap { white-space: nowrap; }
+.fld { display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 </style>

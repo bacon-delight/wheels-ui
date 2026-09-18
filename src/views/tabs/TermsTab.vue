@@ -84,6 +84,20 @@ function onReplace(documentId, e) {
   }
   e.target.value = ''
 }
+// An amendment is a new review cycle, not an edit to a signed one, so it is worth a moment's
+// confirmation: it is what the customer will be asked to approve.
+const showAmend = ref(false)
+async function startAmendment() {
+  await eng.openAmendment()
+  if (!eng.err) showAmend.value = false
+}
+// Documents that arrived in the cycle now under review, as opposed to the ones already agreed.
+const addedInThisCycle = (d) => eng.isAmendment && (d.cycle || 1) === (eng.submission?.cycle || 1)
+// An agreement displaced by this amendment is still the one billing until the new terms are
+// approved, so calling it plainly "superseded" would misdescribe what the customer pays under
+// today. An agreement superseded before the amendment is not in that position.
+const stillBilling = (d) => eng.liveDuringAmendment && eng.liveDocIds.has(d.document_id)
+
 // Removing an agreement destroys its extracted terms too, so it asks first.
 const pendingRemoval = ref(null)
 const canRemove = computed(() =>
@@ -138,10 +152,26 @@ onMounted(() => {
             service one, and the newest of each type is the one in force.
           </p>
         </div>
-        <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="primary btn-file">
+        <label v-if="eng.canUpload" class="primary btn-file">
           ＋ Upload agreements
           <input type="file" accept="application/pdf" multiple hidden @change="onUpload" />
         </label>
+        <button
+          v-else-if="eng.canOpenAmendment"
+          class="primary nowrap"
+          :disabled="!!eng.busy"
+          @click="showAmend = true"
+        >＋ Amend agreements</button>
+      </div>
+
+      <!-- An amendment runs alongside the live deal: the agreed terms keep billing until the
+           new ones have been approved, so say so rather than letting the panel imply the
+           change has already taken effect. -->
+      <div v-if="eng.liveDuringAmendment" class="amend">
+        <div class="arow">
+          <span class="badge info"><span class="dot" />{{ eng.cycleLabel }} in review</span>
+          <span class="muted small">Billing continues on the agreed terms until this is approved.</span>
+        </div>
       </div>
 
       <p v-if="eng.busy === 'upload'" class="muted small" style="margin-top: 10px">Uploading…</p>
@@ -152,7 +182,8 @@ onMounted(() => {
             <div class="row" style="gap: 8px">
               <strong>{{ d.doc_type === 'UNKNOWN' ? 'Unclassified' : d.doc_type }}</strong>
               <!-- An unclassified document governs nothing until we know what it is. -->
-              <span v-if="d.doc_type !== 'UNKNOWN'" class="badge ok"><span class="dot" />In force</span>
+              <span v-if="d.doc_type !== 'UNKNOWN' && addedInThisCycle(d)" class="badge info"><span class="dot" />Proposed</span>
+              <span v-else-if="d.doc_type !== 'UNKNOWN'" class="badge ok"><span class="dot" />In force</span>
               <span v-else-if="d.classified_type" class="badge warn"><span class="dot" />Not an MLA or MSA</span>
               <span v-else class="badge info"><span class="dot" />Type pending</span>
               <span class="muted small">{{ d.filename }}</span>
@@ -178,7 +209,7 @@ onMounted(() => {
               @click="eng.extractDocument(d.document_id)"
             >{{ eng.busy === `extract-${d.document_id}` ? 'Starting…' : 'Extract' }}</button>
             <router-link v-if="eng.reviewable && d.doc_type !== 'UNKNOWN'" class="btn-link" :to="`/engagements/${eid}/documents/${d.document_id}/v/${d.current_version}/review`">Review</router-link>
-            <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="btn-link">
+            <label v-if="eng.canUpload" class="btn-link">
               Replace<input type="file" accept="application/pdf" hidden @change="(e) => onReplace(d.document_id, e)" />
             </label>
             <button
@@ -194,19 +225,21 @@ onMounted(() => {
 
       <!-- Superseded agreements came with the engagement for the record; they never feed
            terms, extraction or billing. -->
-      <details v-if="eng.supersededDocs.length" class="prior">
-        <summary>{{ eng.supersededDocs.length }} superseded agreement{{ eng.supersededDocs.length === 1 ? '' : 's' }} on file</summary>
-        <div v-for="d in eng.supersededDocs" :key="d.document_id" class="doc">
+      <details v-if="eng.supersededDocs.length" class="prior" :open="eng.liveDuringAmendment">
+        <summary>{{ eng.supersededDocs.length }} earlier agreement{{ eng.supersededDocs.length === 1 ? '' : 's' }} on file</summary>
+        <div v-for="d in eng.supersededDocs" :key="d.document_id" class="doc" :class="{ billing: stillBilling(d) }">
           <div class="dinfo">
             <div class="row" style="gap: 8px">
               <strong>{{ d.doc_type === 'UNKNOWN' ? 'Unclassified' : d.doc_type }}</strong>
-              <span class="pill off-pill">Superseded</span>
+              <span v-if="stillBilling(d)" class="badge ok"><span class="dot" />Still billing</span>
+              <span v-else class="pill off-pill">Superseded</span>
               <span class="muted small">{{ d.filename }}</span>
             </div>
             <div class="muted small">
               <span v-if="fmtDate(d.effective_date)">effective {{ fmtDate(d.effective_date) }}</span>
               <span v-else>no effective date found</span>
-              · kept for the record, not billed
+              <template v-if="stillBilling(d)"> · these are the terms in force until the amendment is approved</template>
+              <template v-else> · kept for the record, not billed</template>
             </div>
           </div>
           <button
@@ -239,6 +272,31 @@ onMounted(() => {
         <span class="sp" />
         <button class="ghost" @click="pendingRemoval = null">Cancel</button>
         <button class="primary danger-btn" @click="confirmRemove">Remove agreement</button>
+      </template>
+    </Dialog>
+
+    <Dialog
+      :open="showAmend"
+      title="Amend this engagement?"
+      subtitle="Use this for a renewal, for adding a lease or a service, or for a reissued agreement."
+      @close="showAmend = false"
+    >
+      <p style="margin: 0 0 12px">
+        This opens a new review cycle. You upload the new agreement, we read it, and the
+        customer and finance approve the terms it changes — the same path the original
+        agreements took.
+      </p>
+      <p class="muted small" style="margin: 0">
+        The signed agreement stays exactly as it is and keeps billing throughout. The new terms
+        take effect only once the amendment is approved and billing is set up again.
+      </p>
+      <p v-if="eng.err" class="err">{{ eng.err }}</p>
+      <template #footer>
+        <span class="sp" />
+        <button class="ghost" @click="showAmend = false">Cancel</button>
+        <button class="primary" :disabled="!!eng.busy" @click="startAmendment">
+          {{ eng.busy === 'amend' ? 'Opening…' : 'Open amendment' }}
+        </button>
       </template>
     </Dialog>
 
@@ -453,6 +511,9 @@ onMounted(() => {
 .danger-btn { background: var(--risk); border-color: var(--risk); color: #fff; }
 .danger-btn:hover { background: #b03636; border-color: #b03636; }
 .btn-file { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
+.amend { margin-top: 14px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--accent-weak, #e3ecf9); }
+.arow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.doc.billing { border-color: var(--ok); }
 .prior { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .prior summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
 .prior .doc { opacity: 0.85; }

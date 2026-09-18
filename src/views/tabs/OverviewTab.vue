@@ -30,6 +30,7 @@ const ACTION_LABEL = {
   field_corrected: 'Term corrected',
   user_invited: 'User invited',
   engagement_created: 'Engagement created',
+  amendment_opened: 'Amendment opened',
   engagement_scope_changed: 'Scope changed',
   vehicle_assigned: 'Vehicles assigned',
   vehicle_released: 'Vehicle released',
@@ -91,10 +92,18 @@ const CUSTOMER_LABELS = {
   BILLING_SETUP: 'Being finalised',
   ACTIVE: 'Active',
 }
-const statusLabel = computed(() =>
+const cycleStatus = computed(() =>
   eng.isProvider
     ? LABELS[eng.status] || eng.status
     : CUSTOMER_LABELS[eng.status] || 'Being prepared',
+)
+// While an amendment is under review the engagement itself is still live and billing, so the
+// headline says Active and the amendment's own progress is the note beneath it. Reading
+// "In underwriting review" over a signed, billing engagement would say the deal had come
+// undone.
+const statusLabel = computed(() => (eng.liveDuringAmendment ? 'Active' : cycleStatus.value))
+const statusNote = computed(() =>
+  eng.liveDuringAmendment ? `${eng.cycleLabel} · ${cycleStatus.value.toLowerCase()}` : null,
 )
 
 // A master agreement runs a fixed term; surface how much of it is left, and whether it renews.
@@ -142,14 +151,23 @@ const nextHint = computed(() => {
 
     <div class="card pad">
       <div class="spread" style="margin-bottom: 18px">
-        <h2 style="margin: 0">Journey</h2>
-        <span class="muted small">{{ statusLabel }}</span>
+        <h2 style="margin: 0">{{ eng.isAmendment ? eng.cycleLabel : 'Journey' }}</h2>
+        <span class="muted small">{{ cycleStatus }}</span>
       </div>
+      <p v-if="eng.liveDuringAmendment" class="muted small" style="margin: -8px 0 16px">
+        The engagement is live and billing on the agreed terms. This is the amendment's progress.
+      </p>
       <JourneyStepper :status="eng.status" :for-customer="!eng.isProvider" />
     </div>
 
     <div class="tiles">
-      <div class="stattile"><div class="label">Status</div><div class="val">{{ statusLabel }}</div></div>
+      <div class="stattile">
+        <div class="label">Status</div>
+        <div class="val">
+          {{ statusLabel }}
+          <span v-if="statusNote" class="muted" style="font-weight: 400; font-size: 13px">{{ statusNote }}</span>
+        </div>
+      </div>
       <div class="stattile">
         <div class="label">Customer</div>
         <div class="val">

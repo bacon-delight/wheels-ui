@@ -55,6 +55,33 @@ export const useEngagementStore = defineStore('engagement', {
       const present = Object.keys(sub?.document_ids || {})
       return [...new Set([...this.requiredDocTypes, ...present])]
     },
+    // --- review cycles -------------------------------------------------------------------
+    // An engagement holds the cycle it started on plus one per amendment since. `submission`
+    // is the cycle in play; `liveSubmissionId` is the one billing today, which during an
+    // amendment is the earlier one.
+    cycles: (s) => s.data?.cycles || [],
+    liveSubmissionId: (s) => s.data?.live_submission_id || null,
+    isAmendment: (s) => !!s.data?.is_amendment,
+    cycleLabel: (s) => s.data?.cycle_label || 'Original agreement',
+    canOpenAmendment: (s) => !!s.data?.can_open_amendment,
+    // The engagement is billing on agreed terms while this amendment is reviewed.
+    liveDuringAmendment() {
+      return this.isAmendment && !!this.liveSubmissionId
+    },
+    // The agreements the live cycle settled on — the ones actually billing today. An
+    // amendment displaces one of them the moment its replacement is classified, so standing
+    // alone cannot tell "superseded by this amendment" from "superseded long ago".
+    liveDocIds() {
+      const live = this.cycles.find((c) => c.submission_id === this.liveSubmissionId)
+      return new Set(Object.values(live?.document_ids || {}))
+    },
+    // When a document may join the cycle in play. Mirrors the API's own rule: mid-review the
+    // terms are with the customer or finance, and once a cycle completes a new agreement
+    // belongs to an amendment.
+    canUpload: (s) =>
+      s.data?.your_role !== 'client' &&
+      ['DRAFT', 'IN_UNDERWRITING', 'VALIDATION_FAILED', 'CHANGES_REQUESTED_CLIENT',
+        'CHANGES_REQUESTED_FINANCE'].includes(s.data?.submission?.status),
     assignedVehicleCount: (s) => s.data?.assigned_vehicle_count ?? 0,
     fleetSizeSource: (s) => s.data?.fleet_size_source || 'derived',
     customer: (s) => s.data?.customer || null,
@@ -160,6 +187,19 @@ export const useEngagementStore = defineStore('engagement', {
             method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file,
           })
         }
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
+    },
+    // A renewal, an added lease or service, or a reissued document all change the terms, so
+    // they go through their own review cycle rather than editing a signed one.
+    async openAmendment() {
+      this.busy = 'amend'
+      this.err = ''
+      try {
+        await api.post(`/engagements/${this.eid}/amendments`)
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message

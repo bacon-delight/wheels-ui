@@ -41,7 +41,12 @@ watch(() => route.params.eid, reload)
           <span v-if="eng.data.engagement.scope"> · {{ SCOPE_LABELS[eng.data.engagement.scope] || eng.data.engagement.scope }}</span>
         </div>
       </div>
-      <StatusPill v-if="eng.status" :status="eng.status" />
+      <!-- While an amendment is under review the engagement itself is still live, so the
+           headline pill stays ACTIVE and the amendment's own state sits beside it. -->
+      <div class="row" style="gap: 8px">
+        <span v-if="eng.liveDuringAmendment" class="pill amendpill">{{ eng.cycleLabel }} in review</span>
+        <StatusPill v-if="eng.status" :status="eng.liveDuringAmendment ? 'ACTIVE' : eng.status" />
+      </div>
     </header>
 
     <nav class="tabs">
@@ -62,6 +67,7 @@ watch(() => route.params.eid, reload)
 </template>
 
 <style scoped>
+.amendpill { font-size: 12px; background: var(--accent-weak); color: var(--accent-ink); }
 .wrap { max-width: 1680px; margin: 0 auto; padding: 28px 32px 60px; }
 .back { display: inline-block; font-size: 13px; margin-bottom: 14px; }
 .ehead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }

@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
-import Dropdown from '../../components/Dropdown.vue'
 import { api } from '../../services/api'
 import { docLabel, estimateMonthly, feeLine, money, prettyService, STANDING_LABELS, useEngagementStore } from '../../stores/engagement'
 
@@ -87,10 +86,6 @@ function onReplace(documentId, e) {
 }
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
-const typeOptions = [
-  { value: 'MLA', label: 'Vehicle Lease (MLA)' },
-  { value: 'MSA', label: 'Fleet Management Services (MSA)' },
-]
 
 async function revalidate() {
   await eng.action('reupload', { comment: 'Corrected document re-uploaded during underwriting.' })
@@ -150,11 +145,14 @@ onMounted(() => {
               <strong>{{ d.doc_type === 'UNKNOWN' ? 'Unclassified' : d.doc_type }}</strong>
               <!-- An unclassified document governs nothing until we know what it is. -->
               <span v-if="d.doc_type !== 'UNKNOWN'" class="badge ok"><span class="dot" />In force</span>
-              <span v-else class="badge warn"><span class="dot" />Needs a type</span>
+              <span v-else-if="d.classified_type" class="badge warn"><span class="dot" />Not an MLA or MSA</span>
+              <span v-else class="badge info"><span class="dot" />Type pending</span>
               <span class="muted small">{{ d.filename }}</span>
             </div>
             <div class="muted small">
-              {{ d.doc_type === 'UNKNOWN' ? 'Reading the document to work out its type…' : docLabel(d.doc_type) }}
+              <template v-if="d.doc_type !== 'UNKNOWN'">{{ docLabel(d.doc_type) }}</template>
+              <template v-else-if="d.classified_type">Read, but it does not identify itself as a lease or service agreement, so it carries no billing terms.</template>
+              <template v-else>Its type is identified when you run extraction.</template>
               <span v-if="fmtDate(d.effective_date)"> · effective {{ fmtDate(d.effective_date) }}</span>
               <span v-if="d.current_version > 1"> · revision {{ d.current_version }}</span>
             </div>
@@ -164,14 +162,6 @@ onMounted(() => {
             </div>
           </div>
           <div class="row">
-            <div v-if="eng.isProvider && d.doc_type === 'UNKNOWN'" style="width: 200px">
-              <Dropdown
-                model-value=""
-                :options="typeOptions"
-                placeholder="Set type…"
-                @update:model-value="(v) => eng.setDocType(d.document_id, v)"
-              />
-            </div>
             <router-link v-if="eng.reviewable && d.doc_type !== 'UNKNOWN'" class="btn-link" :to="`/engagements/${eid}/documents/${d.document_id}/v/${d.current_version}/review`">Review</router-link>
             <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="btn-link">
               Replace<input type="file" accept="application/pdf" hidden @change="(e) => onReplace(d.document_id, e)" />

@@ -29,8 +29,19 @@ const savingFleet = ref(false)
 const canSetFleet = computed(
   () => eng.isProvider && eng.reviewable && !['BILLING_SETUP', 'ACTIVE'].includes(eng.status),
 )
+// The recurring estimate is built from the priced terms, shaped the way the shared estimator
+// expects. Only terms that carry a per-vehicle monthly basis end up counting, which the
+// estimator decides.
 const electedLines = computed(() =>
-  eng.clientTerms.flatMap((g) => g.fields.filter((f) => f.elected).map((f) => ({ fee_items: f.fee_items }))),
+  eng.termsIn('pricing').map((t) => ({
+    fee_items: [
+      {
+        amount: t.amount,
+        unit_basis: t.unit_basis,
+        tier_bands: t.record?.tier_bands || [],
+      },
+    ],
+  })),
 )
 const estMonthly = computed(() => estimateMonthly(electedLines.value, fleetInput.value))
 // Clearing the override hands the number back to the vehicle inventory.

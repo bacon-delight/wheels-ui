@@ -183,7 +183,7 @@ onMounted(() => {
     <div class="rhead">
       <router-link :to="`/engagements/${eid}`" class="muted">← Back to engagement</router-link>
       <div class="row">
-        <ExtractionMeta :run="run" />
+        <ExtractionMeta :run="run" align="right" />
         <button
           v-if="review && review.applicable"
           class="sm crtrigger"

@@ -6,6 +6,9 @@ import { computed, ref } from 'vue'
 // quietly stopped working becomes visible to a person.
 const props = defineProps({
   run: { type: Object, default: null },
+  // Which edge the panel hangs from. A chip near the left of the page must open rightward or
+  // it disappears under the sidebar.
+  align: { type: String, default: 'left' },
 })
 
 const open = ref(false)
@@ -59,7 +62,7 @@ const seconds = computed(() =>
     <span class="chiptext">{{ chip }}</span>
     <span v-if="trouble.length" class="warn-dot" title="a category was cut short">!</span>
 
-    <span v-if="open" class="panel" @click.stop>
+    <span v-if="open" class="panel" :class="align === 'right' ? 'anchor-right' : 'anchor-left'" @click.stop>
       <span class="ptitle">Extraction run</span>
       <span class="prow"><span>Model</span><span class="v">{{ run.model || '—' }}</span></span>
       <span class="prow"><span>Provider</span><span class="v">{{ run.provider || '—' }}</span></span>
@@ -117,13 +120,15 @@ const seconds = computed(() =>
   background: var(--warn-weak); color: var(--warn); font-weight: 700; font-size: 9px;
 }
 .panel {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  position: absolute; top: calc(100% + 6px); z-index: 60;
   display: grid; gap: 3px; min-width: 268px;
   padding: 12px 14px;
   background: var(--panel); border: 1px solid var(--line-strong);
   border-radius: 10px; box-shadow: var(--shadow);
   font-family: var(--sans); color: var(--ink); white-space: normal; cursor: default;
 }
+.panel.anchor-left { left: 0; }
+.panel.anchor-right { right: 0; }
 .ptitle { font-weight: 600; font-size: 12px; margin-bottom: 3px; }
 .prow { display: flex; justify-content: space-between; gap: 18px; font-size: 12px; color: var(--muted); }
 .prow .v { color: var(--ink); font-variant-numeric: tabular-nums; }

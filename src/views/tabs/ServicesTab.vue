@@ -59,6 +59,7 @@ function itemsFor(programId) {
       name: t.record?.item || t.title,
       amount: t.amount,
       frequency: t.record?.frequency,
+      recurring: t.billing_class === 'recurring',
     }))
 }
 

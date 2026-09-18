@@ -31,6 +31,8 @@ const ACTION_LABEL = {
   user_invited: 'User invited',
   engagement_created: 'Engagement created',
   amendment_opened: 'Amendment opened',
+  amendment_discarded: 'Amendment discarded',
+  document_removed: 'Agreement removed',
   engagement_scope_changed: 'Scope changed',
   vehicle_assigned: 'Vehicles assigned',
   vehicle_released: 'Vehicle released',

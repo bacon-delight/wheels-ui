@@ -68,6 +68,18 @@ export const useEngagementStore = defineStore('engagement', {
     liveDuringAmendment() {
       return this.isAmendment && !!this.liveSubmissionId
     },
+    // Agreements uploaded into the cycle now under review, as opposed to ones carried over.
+    thisCycleDocs() {
+      const cycle = this.submission?.cycle || 1
+      return this.documents.filter((d) => (d.cycle || 1) === cycle)
+    },
+    // An amendment opened by mistake can be closed, but only while nothing has gone into it.
+    canDiscardAmendment() {
+      return (
+        this.isProvider && this.isAmendment && this.status === 'DRAFT' &&
+        this.thisCycleDocs.length === 0
+      )
+    },
     // The agreements the live cycle settled on — the ones actually billing today. An
     // amendment displaces one of them the moment its replacement is classified, so standing
     // alone cannot tell "superseded by this amendment" from "superseded long ago".
@@ -117,12 +129,16 @@ export const useEngagementStore = defineStore('engagement', {
         'IN_UNDERWRITING', 'PENDING_CLIENT_APPROVAL', 'CLIENT_APPROVED',
         'PENDING_FINANCE_APPROVAL', 'FINANCE_APPROVED', 'BILLING_SETUP', 'ACTIVE',
       ].includes(s.data?.submission?.status),
-    clientMessage: (s) => {
-      const st = s.data?.submission?.status
+    clientMessage() {
+      const st = this.data?.submission?.status
       if (['CLIENT_APPROVED', 'PENDING_FINANCE_APPROVAL', 'FINANCE_APPROVED', 'BILLING_SETUP', 'ACTIVE'].includes(st))
         return 'You approved these terms — they are being finalized. Nothing more is needed from you.'
       if (['CHANGES_REQUESTED_CLIENT', 'REVALIDATING', 'VALIDATION_FAILED'].includes(st))
         return 'Your change request was sent. The provider is updating the agreement and will resubmit.'
+      // An amendment is a change to an agreement the customer already has, so saying their
+      // terms are "being prepared" would suggest they have none.
+      if (this.liveDuringAmendment)
+        return 'An amendment to your agreement is being prepared. Your current terms are unchanged until you have reviewed and approved it.'
       return 'Your billing terms are being prepared. They will appear here for your review shortly.'
     },
   },
@@ -200,6 +216,17 @@ export const useEngagementStore = defineStore('engagement', {
       this.err = ''
       try {
         await api.post(`/engagements/${this.eid}/amendments`)
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
+    },
+    async discardAmendment() {
+      this.busy = 'discard'
+      this.err = ''
+      try {
+        await api.delete(`/engagements/${this.eid}/amendments/${this.submission.submission_id}`)
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message

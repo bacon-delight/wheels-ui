@@ -171,6 +171,15 @@ onMounted(() => {
         <div class="arow">
           <span class="badge info"><span class="dot" />{{ eng.cycleLabel }} in review</span>
           <span class="muted small">Billing continues on the agreed terms until this is approved.</span>
+          <span class="sp" />
+          <!-- Opened by mistake? Close it while nothing has gone into it, so the engagement
+               is not left with a cycle that can never finish. -->
+          <button
+            v-if="eng.canDiscardAmendment"
+            class="ghost sm"
+            :disabled="!!eng.busy"
+            @click="eng.discardAmendment()"
+          >{{ eng.busy === 'discard' ? 'Discarding…' : 'Discard amendment' }}</button>
         </div>
       </div>
 
@@ -513,6 +522,7 @@ onMounted(() => {
 .btn-file { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
 .amend { margin-top: 14px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 12px 14px; background: var(--accent-weak, #e3ecf9); }
 .arow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arow .sp { flex: 1; }
 .doc.billing { border-color: var(--ok); }
 .prior { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .prior summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); font-weight: 600; }

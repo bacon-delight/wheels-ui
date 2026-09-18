@@ -26,9 +26,26 @@ const open = ref(false)
 const query = ref('')
 const active = ref(-1)
 const root = ref(null)
+const menuEl = ref(null)
 const list = ref(null)
 const searchInput = ref(null)
-const flipUp = ref(false)
+// The menu is teleported to <body> so a dialog's scrolling body cannot clip it or be stretched
+// by it. That means it is positioned against the viewport, not the trigger's parent.
+const pos = ref({ top: 0, left: 0, width: 0, flip: false })
+
+function place() {
+  const el = root.value?.querySelector('.selbtn')
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  const below = window.innerHeight - r.bottom
+  const flip = below < 280 && r.top > below
+  pos.value = {
+    top: flip ? r.top - 8 : r.bottom + 8,
+    left: Math.min(r.left, window.innerWidth - r.width - 8),
+    width: r.width,
+    flip,
+  }
+}
 
 const showSearch = computed(() =>
   props.searchable === null ? props.options.length > 10 : props.searchable,
@@ -47,20 +64,18 @@ function toggle() {
 }
 
 async function show() {
+  place()
   open.value = true
   query.value = ''
   active.value = Math.max(0, filtered.value.findIndex((o) => o.value === props.modelValue))
   await nextTick()
-  // No flip-up exists in the system; derive it so a menu near the viewport bottom stays usable.
-  const box = root.value?.getBoundingClientRect()
-  flipUp.value = !!box && window.innerHeight - box.bottom < 280 && box.top > 280
+  place()
   if (showSearch.value) searchInput.value?.focus()
   scrollActiveIntoView()
 }
 
 function close() {
   open.value = false
-  flipUp.value = false
 }
 
 function pick(option) {
@@ -110,14 +125,29 @@ function onKey(e) {
 }
 
 function onDocClick(e) {
-  if (open.value && root.value && !root.value.contains(e.target)) close()
+  if (!open.value) return
+  // The menu lives outside the component's DOM now, so both roots have to be checked.
+  const inTrigger = root.value?.contains(e.target)
+  const inMenu = menuEl.value?.contains(e.target)
+  if (!inTrigger && !inMenu) close()
+}
+
+// A teleported menu does not travel with the page, so follow the trigger while open.
+function onReflow() {
+  if (open.value) place()
 }
 
 watch(open, (isOpen) => {
-  if (isOpen) document.addEventListener('mousedown', onDocClick)
-  else document.removeEventListener('mousedown', onDocClick)
+  const fn = isOpen ? 'addEventListener' : 'removeEventListener'
+  document[fn]('mousedown', onDocClick)
+  window[fn]('scroll', onReflow, true)
+  window[fn]('resize', onReflow)
 })
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocClick)
+  window.removeEventListener('scroll', onReflow, true)
+  window.removeEventListener('resize', onReflow)
+})
 </script>
 
 <template>
@@ -135,7 +165,14 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
       <svg class="selbtn__c" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
     </button>
 
-    <div class="menu" :class="{ 'is-open': open, 'menu--up': flipUp }" role="listbox">
+    <Teleport to="body">
+      <div
+        ref="menuEl"
+        class="menu"
+        :class="{ 'is-open': open, 'menu--up': pos.flip }"
+        :style="{ top: pos.top + 'px', left: pos.left + 'px', minWidth: pos.width + 'px' }"
+        role="listbox"
+      >
       <div v-if="showSearch" class="menu__find">
         <input
           ref="searchInput"
@@ -165,8 +202,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
           <svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
         </button>
       </div>
-      <p v-if="!filtered.length" class="menu__empty">No options match “{{ query }}”.</p>
-    </div>
+        <p v-if="!filtered.length" class="menu__empty">No options match “{{ query }}”.</p>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -208,11 +246,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
 .selbtn[aria-expanded='true'] .selbtn__c { transform: rotate(180deg); }
 
 .menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 60;
-  min-width: 100%;
+  position: fixed;
+  /* Above the dialog panel (75) and its scrim (70), since it may open from inside one. */
+  z-index: 90;
   max-width: calc(100vw - 20px);
   padding: 6px;
   background: var(--panel);
@@ -231,10 +267,11 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocClick))
   opacity: 1; visibility: visible; transform: none; pointer-events: auto;
   transition-delay: 0s, 0s, 0s;
 }
-/* Not in the system, which only ever opens downward; added so a menu near the bottom of a long
-   page does not open off-screen. */
-.menu--up { top: auto; bottom: calc(100% + 8px); transform: translateY(4px); }
-.menu--up.is-open { transform: none; }
+/* Not in the system, which only ever opens downward; added so a menu near the bottom of the
+   viewport does not open off-screen. `top` is the trigger's top edge, so shift up by our own
+   height rather than guessing one. */
+.menu--up { transform: translateY(calc(-100% + 4px)); }
+.menu--up.is-open { transform: translateY(-100%); }
 
 .menu__find { position: relative; padding: 2px 2px 6px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .menu__find input {

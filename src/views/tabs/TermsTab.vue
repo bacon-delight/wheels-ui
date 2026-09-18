@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
+import Dialog from '../../components/Dialog.vue'
 import { api } from '../../services/api'
 import { docLabel, estimateMonthly, feeLine, money, prettyService, useEngagementStore } from '../../stores/engagement'
 
@@ -83,6 +84,18 @@ function onReplace(documentId, e) {
   }
   e.target.value = ''
 }
+// Removing an agreement destroys its extracted terms too, so it asks first.
+const pendingRemoval = ref(null)
+const canRemove = computed(() =>
+  eng.isProvider &&
+  ['DRAFT', 'IN_UNDERWRITING', 'VALIDATION_FAILED', 'CHANGES_REQUESTED_CLIENT'].includes(eng.status),
+)
+async function confirmRemove() {
+  const doc = pendingRemoval.value
+  pendingRemoval.value = null
+  if (doc) await eng.removeDocument(doc.document_id)
+}
+
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null
 
@@ -168,6 +181,12 @@ onMounted(() => {
             <label v-if="eng.isProvider && ['DRAFT', 'IN_UNDERWRITING'].includes(eng.status)" class="btn-link">
               Replace<input type="file" accept="application/pdf" hidden @change="(e) => onReplace(d.document_id, e)" />
             </label>
+            <button
+              v-if="canRemove"
+              class="ghost sm danger"
+              :disabled="!!eng.busy"
+              @click="pendingRemoval = d"
+            >{{ eng.busy === `remove-${d.document_id}` ? 'Removing…' : 'Remove' }}</button>
           </div>
         </div>
         <p v-if="!eng.currentDocs.length" class="muted small" style="padding: 8px 0">No agreements uploaded yet.</p>
@@ -190,6 +209,12 @@ onMounted(() => {
               · kept for the record, not billed
             </div>
           </div>
+          <button
+            v-if="canRemove"
+            class="ghost sm danger"
+            :disabled="!!eng.busy"
+            @click="pendingRemoval = d"
+          >Remove</button>
         </div>
       </details>
 
@@ -200,6 +225,22 @@ onMounted(() => {
       <p v-if="eng.status === 'EXTRACTING' || eng.status === 'REVALIDATING'" class="muted small" style="margin-top: 10px">Processing — parsing pages and pulling billing terms with Claude. Refresh in a moment.</p>
       <p v-if="eng.status === 'IN_UNDERWRITING'" class="muted small" style="margin-top: 12px">Wrong file, or a re-upload that didn’t reflect the change requested? Hit <strong>Replace</strong> above, then <strong>Extract</strong> that agreement.</p>
     </div>
+
+    <Dialog
+      :open="!!pendingRemoval"
+      title="Remove this agreement?"
+      :subtitle="pendingRemoval ? `${pendingRemoval.filename} and every term extracted from it will be deleted. This cannot be undone.` : ''"
+      @close="pendingRemoval = null"
+    >
+      <p class="muted small" style="margin: 0">
+        The engagement's scope is recalculated from the agreements that remain.
+      </p>
+      <template #footer>
+        <span class="sp" />
+        <button class="ghost" @click="pendingRemoval = null">Cancel</button>
+        <button class="primary danger-btn" @click="confirmRemove">Remove agreement</button>
+      </template>
+    </Dialog>
 
     <!-- Change verification: did the re-uploaded terms reflect the customer's request? -->
     <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
@@ -392,6 +433,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.danger { color: var(--risk); }
+.danger:hover { background: var(--risk-weak); border-color: var(--risk); color: var(--risk); }
+.danger-btn { background: var(--risk); border-color: var(--risk); color: #fff; }
+.danger-btn:hover { background: #b03636; border-color: #b03636; }
 .btn-file { display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
 .prior { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .prior summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); font-weight: 600; }

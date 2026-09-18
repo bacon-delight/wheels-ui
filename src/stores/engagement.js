@@ -178,6 +178,17 @@ export const useEngagementStore = defineStore('engagement', {
       }
       this.busy = ''
     },
+    async removeDocument(documentId) {
+      this.busy = `remove-${documentId}`
+      this.err = ''
+      try {
+        await api.delete(`/engagements/${this.eid}/documents/${documentId}`)
+        await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      }
+      this.busy = ''
+    },
     async setDocType(documentId, docType) {
       this.busy = `type-${documentId}`
       this.err = ''

@@ -232,17 +232,27 @@ const unplaced = (t) =>
 </template>
 
 <style scoped>
-.twrap { width: 100%; }
-.table { width: 100%; border-collapse: collapse; font: 400 13.5px/1.5 var(--sans); color: var(--ink); }
+/* One scale for the whole ledger rather than a size per element, so the density can be tuned
+   in one place. A step below the app's 14px body: this is a dense table read by the column,
+   not prose, and at the document scale it was costing rows without buying legibility. */
+.twrap {
+  width: 100%;
+  --t-base: 12.5px;
+  --t-title: 12.75px;
+  --t-sub: 11.5px;
+  --t-head: 10px;
+  --t-pad-y: 7px;
+  --t-pad-x: 13px;
+}
+.table { width: 100%; border-collapse: collapse; font: 400 var(--t-base)/1.45 var(--sans); color: var(--ink); }
 .table thead th {
-  padding: 11px 14px; text-align: left; white-space: nowrap; background: var(--panel);
+  padding: 9px var(--t-pad-x); text-align: left; white-space: nowrap; background: var(--panel);
   border-bottom: 1px solid var(--line);
-  font: 500 10.5px/1 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  font: 500 var(--t-head)/1 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
 }
 /* A header that scrolls away turns every figure into a guess. */
 .table--sticky thead th { position: sticky; top: 0; z-index: 3; }
-.table td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.table--compact td, .table--compact thead th { padding-top: 8px; padding-bottom: 8px; }
+.table td { padding: var(--t-pad-y) var(--t-pad-x); border-bottom: 1px solid var(--line); vertical-align: middle; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .trow { cursor: pointer; transition: background 0.12s ease; }
 .trow:hover { background: var(--bg); }
@@ -253,31 +263,31 @@ const unplaced = (t) =>
 /* Colour never marks alone — the State cell carries a label beside it. */
 .trow.violated { background: linear-gradient(90deg, var(--warn) 0 3px, var(--warn-weak) 3px); }
 .trow.violated:hover { background: linear-gradient(90deg, var(--warn) 0 3px, var(--warn-weak) 3px); }
-.table__t { font-weight: 500; display: block; }
-.table__s { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-soft); }
+.table__t { font-weight: 500; font-size: var(--t-title); display: block; line-height: 1.35; }
+.table__s { display: block; margin-top: 2px; font-size: var(--t-sub); line-height: 1.4; color: var(--ink-soft); }
 .table__s.clamp { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 /* Figures right-aligned and tabular, so digits line up under their own name. */
 .col-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .col-state { width: 1%; white-space: nowrap; text-align: right; }
-.freq, .kind { color: var(--ink-soft); font-size: 12.5px; }
+.freq, .kind { color: var(--ink-soft); font-size: var(--t-sub); }
 /* Some frequencies are a whole clause. Two lines here, the rest on hover and in the detail —
    one long cell must not cost eight rows of the scan it exists to support. */
 .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .none { color: var(--muted); }
-.incl { color: var(--ok); font-size: 12px; }
+.incl { color: var(--ok); font-size: var(--t-sub); }
 .empty { padding: 22px 14px; }
 /* The system's quiet badge: present, outlined, carrying no colour of its own — a state that is
    true of most rows should not shout on every one of them. */
 .badge.quiet { background: transparent; color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
-.col-state .badge { font-size: 11px; padding: 2px 8px; }
+.col-state .badge { font-size: 10.5px; padding: 2px 7px; font-weight: 500; }
 .small { font-size: 12px; }
 
 .detail td { background: var(--panel); border-bottom: 1px solid var(--line); padding: 14px 16px 16px; }
 .moved { margin-bottom: 12px; font-size: 12px; color: var(--risk); background: var(--risk-weak); padding: 8px 10px; border-radius: 8px; }
 /* A description list, because these are the properties of one record rather than rows to sort. */
 .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; margin: 0; }
-.kv dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; padding-top: 3px; }
-.kv dd { margin: 0; font-size: 13px; line-height: 1.5; min-width: 0; }
+.kv dt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; padding-top: 3px; }
+.kv dd { margin: 0; font-size: var(--t-base); line-height: 1.5; min-width: 0; }
 .kv dd .long { white-space: pre-wrap; }
 .kv dd .num { font-variant-numeric: tabular-nums; }
 .kv input, .kv textarea { width: 100%; }

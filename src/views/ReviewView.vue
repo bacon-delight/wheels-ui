@@ -127,11 +127,10 @@ const hitsElsewhere = computed(() => {
     }))
     .filter((c) => c.n)
 })
-// Approval is demanded on pricing, which is where the money is. Requiring it on all three
-// hundred records would mean nobody ever reaches the end.
-const pendingPricing = computed(
-  () => terms.value.filter((t) => t.category === 'pricing' && !t.approved).length,
-)
+// The header speaks for the document, so its figures count the document. A pricing-only
+// total sitting up there read as wrong while standing in SLA, because it was describing a
+// category from a bar that belongs to the whole contract.
+const approvedCount = computed(() => terms.value.filter((t) => t.approved).length)
 const pendingInTab = computed(() => shown.value.filter((t) => !t.approved).length)
 
 // --- change verification ---
@@ -307,7 +306,9 @@ onMounted(() => {
         </button>
         <span v-if="needsReview" class="badge low">{{ needsReview }} need review</span>
         <span v-else-if="loaded" class="badge high">All reviewed</span>
-        <span v-if="pendingPricing" class="muted small">{{ pendingPricing }} priced terms to approve</span>
+        <span v-if="terms.length" class="muted small">
+          {{ approvedCount }} of {{ terms.length }} approved
+        </span>
       </div>
     </div>
 
@@ -519,13 +520,14 @@ onMounted(() => {
    plain `tabs` rule: equal-width, centred, underlined. The strip stays put while the list
    scrolls, because the categories are how you navigate. */
 .tabs { display: flex; gap: 0; background: #fff; border-bottom: 1px solid var(--line); }
+.tab { height: 40px; }
 .tab {
   flex: 1; height: 42px;
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   /* The app gives every button a 10px radius and a panel fill. Both have to go here, or the
      underline curves up at its ends and the tab reads as a pressed key rather than a tab. */
   border: 0; border-radius: 0; background: none; padding: 0; cursor: pointer;
-  font: 400 14px/1 var(--sans); color: var(--muted);
+  font: 400 13px/1 var(--sans); color: var(--muted);
   border-bottom: 2px solid transparent; margin-bottom: -1px;
   transition: color 0.12s ease, border-color 0.18s ease;
 }
@@ -535,7 +537,7 @@ onMounted(() => {
 /* A plain figure for a neutral total; it goes accent on the tab you are in, so only the
    current count carries weight. Tabular figures keep a changing number from shifting its
    neighbour. */
-.tab__n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab__n { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tab.is-active .tab__n { color: var(--accent); }
 
 .tbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; }
@@ -554,7 +556,7 @@ onMounted(() => {
   fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round;
 }
 .finder:focus-within .finder__ico { color: var(--accent); }
-.finder__in { flex: 1; min-width: 0; height: 100%; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink); }
+.finder__in { flex: 1; min-width: 0; height: 100%; border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--ink); }
 .finder__in::placeholder { color: var(--muted); }
 .finder__in:focus { outline: none; }
 .finder__in::-webkit-search-cancel-button, .finder__in::-webkit-search-decoration { -webkit-appearance: none; display: none; }

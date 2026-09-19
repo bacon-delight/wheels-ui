@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "eslint src && vite build",
+    "build": "eslint src && node scripts/check-templates.mjs && vite build",
     "preview": "vite preview",
-    "lint": "eslint src"
+    "lint": "eslint src && node scripts/check-templates.mjs"
   },
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.20",

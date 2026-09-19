@@ -30,11 +30,9 @@ const pretty = (v) => (v || '').replace(/_/g, ' ').toLowerCase()
  */
 const fleetInput = ref(100)
 const savingFleet = ref(false)
-const fleetLocked = computed(() =>
-  ['BILLING_SETUP', 'PENDING_BILLING_AUDIT', 'CHANGES_REQUESTED_AUDIT', 'ACTIVE'].includes(
-    eng.status,
-  ),
-)
+// Locked only once billing is live: before that the schedule has invoiced nobody, and the
+// billing audit needs the number changeable to fix an engagement that reached it at zero.
+const fleetLocked = computed(() => eng.status === 'ACTIVE')
 const canSetFleet = computed(() => eng.isProvider && !fleetLocked.value)
 async function saveFleet() {
   savingFleet.value = true
@@ -158,7 +156,7 @@ onMounted(load)
           <p class="muted small" style="margin: 6px 0 0; max-width: 480px">
             The vehicle count recurring dues are charged against. It follows the
             {{ data?.assigned_vehicle_count ?? 0 }} assigned above unless you override it, and
-            locks once billing has been generated.
+            locks once the engagement goes live.
           </p>
         </div>
         <label v-if="canSetFleet" class="fleetset">
@@ -174,7 +172,7 @@ onMounted(load)
         <span class="badge" :class="eng.fleetSizeSource === 'override' ? 'warn' : 'ok'">
           <span class="dot" />{{ eng.fleetSizeSource === 'override' ? 'Manual override' : 'From inventory' }}
         </span>
-        <span v-if="fleetLocked" class="badge"><span class="dot" />Locked — billing is set up</span>
+        <span v-if="fleetLocked" class="badge"><span class="dot" />Locked — billing is live</span>
         <button
           v-if="canSetFleet && eng.fleetSizeSource === 'override'"
           class="ghost sm"

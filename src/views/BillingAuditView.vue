@@ -157,6 +157,8 @@ const drift = computed(
 const unapproved = computed(() => items.value.filter((it) => it.approved === false))
 
 const schedule = computed(() => billing.value?.schedule || [])
+// Corrections are only possible while the audit is open; afterwards these are invoices.
+const editable = computed(() => eng.status === 'PENDING_BILLING_AUDIT')
 const fmtDate = (iso) =>
   new Date(iso.slice(0, 10) + 'T00:00:00').toLocaleDateString(undefined, {
     day: 'numeric', month: 'short', year: 'numeric',
@@ -257,6 +259,27 @@ const CLASSES = [
 ]
 const draft = ref({ amount: null, billing_class: '' })
 const saving = ref(false)
+
+// The fleet multiplies every recurring charge, so it belongs on this screen rather than two
+// pages away: an engagement whose vehicles landed after billing was generated arrives here at
+// zero and bills nothing a month, and that is precisely what an audit is for.
+const fleetDraft = ref(0)
+const savingFleet = ref(false)
+watch(fleet, (n) => (fleetDraft.value = n), { immediate: true })
+async function saveFleet() {
+  const n = Math.max(0, Number(fleetDraft.value) || 0)
+  if (n === fleet.value) return
+  savingFleet.value = true
+  err.value = ''
+  try {
+    await api.patch(`/engagements/${eid}/billing`, { fleet_size: n })
+    await load()
+  } catch (e) {
+    err.value = e.response?.data?.detail || e.message
+    fleetDraft.value = fleet.value
+  }
+  savingFleet.value = false
+}
 
 function beginEdit(it) {
   draft.value = { amount: it.amount, billing_class: it.billing_class || 'usage' }
@@ -395,10 +418,29 @@ async function approve() {
           <div class="invoice">
             <div class="label">What one invoice comes to</div>
             <div class="total">{{ money(perInvoice) }}<span class="per">/{{ FREQ[frequency] }}</span></div>
-            <div class="muted small">
-              {{ money(perUnitTotal) }} per vehicle per month × {{ fleet }} vehicles =
+            <div class="muted small sumline">
+              {{ money(perUnitTotal) }} per vehicle per month ×
+              <template v-if="editable">
+                <input
+                  v-model.number="fleetDraft"
+                  class="fleetin"
+                  type="number"
+                  min="0"
+                  aria-label="Vehicles billed"
+                  @change="saveFleet"
+                />
+              </template>
+              <strong v-else>{{ fleet }}</strong>
+              vehicles<span v-if="savingFleet"> · saving…</span> =
               {{ money(monthlyTotal) }} a month<template v-if="months > 1">, billed every {{ months }} months</template>.
             </div>
+            <!-- Nothing times anything is nothing, and this screen is the last chance to
+                 notice before a customer is invoiced for it. -->
+            <p v-if="!fleet && loaded" class="flag warn">
+              No vehicles are billed on this engagement, so every recurring charge comes to
+              nothing. Set the count above — {{ eng.assignedVehicleCount }}
+              {{ eng.assignedVehicleCount === 1 ? 'vehicle is' : 'vehicles are' }} assigned to it.
+            </p>
             <!-- If this screen and the stored figure disagree, the stored one is what bills. -->
             <p v-if="drift" class="flag warn">
               This adds up to {{ money(monthlyTotal) }} a month, but billing has
@@ -418,58 +460,56 @@ async function approve() {
             <p class="muted small note">
               Click a charge to see the clause it was read from — and to correct it.
             </p>
-            <button
-              v-for="it in recurring"
-              :key="key(it)"
-              type="button"
-              class="line"
-              :class="{ sel: selected && key(selected) === key(it) }"
-              @click="pick(it)"
-            >
-              <span class="lmain">
-                <span class="ltitle">{{ it.description || it.item || it.program }}</span>
-                <span class="muted lsub">
-                  {{ it.program }}
-                  <template v-if="it.band"> · band {{ it.band.min_units }}–{{ it.band.max_units ?? '∞' }} vehicles</template>
-                  <template v-else-if="it.frequency"> · {{ it.frequency }}</template>
+            <!-- The charge and its correction fields are one item: the v-for has to wrap
+                 both, or `it` does not exist by the time the editor is rendered. -->
+            <div v-for="it in recurring" :key="key(it)" class="charge">
+              <button
+                type="button"
+                class="line"
+                :class="{ sel: selected && key(selected) === key(it) }"
+                @click="pick(it)"
+              >
+                <span class="lmain">
+                  <span class="ltitle">{{ it.description || it.item || it.program }}</span>
+                  <span class="muted lsub">
+                    {{ it.program }}
+                    <template v-if="it.band"> · band {{ it.band.min_units }}–{{ it.band.max_units ?? '∞' }} vehicles</template>
+                    <template v-else-if="it.frequency"> · {{ it.frequency }}</template>
+                  </span>
                 </span>
-              </span>
-              <span class="lrate muted">{{ money(it.per_unit) }} × {{ fleet }}</span>
-              <span class="lamt">{{ money(it.per_unit * fleet) }}</span>
-              <span v-if="it.corrected?.length" class="fixed">corrected</span>
-            </button>
-            <div v-if="selected && key(selected) === key(it)" class="editor">
-              <div class="efields">
-                <label class="efield">
-                  <span class="label">Amount</span>
-                  <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
-                </label>
-                <label class="efield wide">
-                  <span class="label">Bills as</span>
-                  <select v-model="draft.billing_class">
-                    <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
-                  </select>
-                </label>
-              </div>
-              <!-- What the contract was read as saying stays on the row, so a correction is
-                   something you can see was made rather than a number that quietly disagrees
-                   with the clause highlighted beside it. -->
-              <p v-if="it.corrected?.length" class="asread">
-                Read from the contract as
-                <strong>{{ money(it.as_read?.amount) }}</strong>,
-                {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
-              </p>
-              <div class="eactions">
-                <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
-                  {{ saving ? 'Saving…' : 'Save correction' }}
-                </button>
-                <button
-                  v-if="it.corrected?.length"
-                  class="ghost sm"
-                  :disabled="saving"
-                  @click.stop="revert"
-                >Back to as read</button>
-                <span class="muted small">Changes what will be invoiced, straight away.</span>
+                <span class="lrate muted">{{ money(it.per_unit) }} × {{ fleet }}</span>
+                <span class="lamt">{{ money(it.per_unit * fleet) }}</span>
+                <span v-if="it.corrected?.length" class="fixed">corrected</span>
+              </button>
+              <div v-if="selected && key(selected) === key(it)" class="editor">
+                <div class="efields">
+                  <label class="efield">
+                    <span class="label">Amount</span>
+                    <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
+                  </label>
+                  <label class="efield wide">
+                    <span class="label">Bills as</span>
+                    <select v-model="draft.billing_class">
+                      <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
+                    </select>
+                  </label>
+                </div>
+                <!-- What the contract was read as saying stays on the row, so a correction is something
+                     you can see was made rather than a number that quietly disagrees with the clause
+                     highlighted beside it. -->
+                <p v-if="it.corrected?.length" class="asread">
+                  Read from the contract as <strong>{{ money(it.as_read?.amount) }}</strong>,
+                  {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
+                </p>
+                <div class="eactions">
+                  <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
+                    {{ saving ? 'Saving…' : 'Save correction' }}
+                  </button>
+                  <button v-if="it.corrected?.length" class="ghost sm" :disabled="saving" @click.stop="revert">
+                    Back to as read
+                  </button>
+                  <span class="muted small">Changes what will be invoiced, straight away.</span>
+                </div>
               </div>
             </div>
 
@@ -492,58 +532,51 @@ async function approve() {
             </p>
             <div v-for="g in separate" :key="g.cls" class="group">
               <div class="glabel">{{ g.label }} <span class="muted">· {{ g.rows.length }}</span></div>
-              <button
-                v-for="it in g.rows"
-                :key="key(it)"
-                type="button"
-                class="line thin"
-                :class="{ sel: selected && key(selected) === key(it) }"
-                @click="pick(it)"
-              >
-                <span class="lmain">
-                  <span class="ltitle">{{ it.description || it.item || it.program }}</span>
-                  <span class="muted lsub">{{ it.program }}<template v-if="it.frequency"> · {{ it.frequency }}</template></span>
-                </span>
-                <span class="lamt muted">
-                  <template v-if="it.amount != null">{{ money(it.amount) }}</template>
-                  <template v-else-if="it.rate_pct != null">{{ it.rate_pct }}%</template>
-                  <template v-else-if="it.tier_bands?.length">tiered</template>
-                  <template v-else>—</template>
-                </span>
-                <span v-if="it.corrected?.length" class="fixed">corrected</span>
-              </button>
-              <div v-if="selected && key(selected) === key(it)" class="editor">
-                <div class="efields">
-                  <label class="efield">
-                    <span class="label">Amount</span>
-                    <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
-                  </label>
-                  <label class="efield wide">
-                    <span class="label">Bills as</span>
-                    <select v-model="draft.billing_class">
-                      <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
-                    </select>
-                  </label>
-                </div>
-                <!-- What the contract was read as saying stays on the row, so a correction is
-                     something you can see was made rather than a number that quietly disagrees
-                     with the clause highlighted beside it. -->
-                <p v-if="it.corrected?.length" class="asread">
-                  Read from the contract as
-                  <strong>{{ money(it.as_read?.amount) }}</strong>,
-                  {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
-                </p>
-                <div class="eactions">
-                  <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
-                    {{ saving ? 'Saving…' : 'Save correction' }}
-                  </button>
-                  <button
-                    v-if="it.corrected?.length"
-                    class="ghost sm"
-                    :disabled="saving"
-                    @click.stop="revert"
-                  >Back to as read</button>
-                  <span class="muted small">Changes what will be invoiced, straight away.</span>
+              <div v-for="it in g.rows" :key="key(it)" class="charge">
+                <button
+                  type="button"
+                  class="line thin"
+                  :class="{ sel: selected && key(selected) === key(it) }"
+                  @click="pick(it)"
+                >
+                  <span class="lmain">
+                    <span class="ltitle">{{ it.description || it.item || it.program }}</span>
+                    <span class="muted lsub">{{ it.program }}<template v-if="it.frequency"> · {{ it.frequency }}</template></span>
+                  </span>
+                  <span class="lamt muted">
+                    <template v-if="it.amount != null">{{ money(it.amount) }}</template>
+                    <template v-else-if="it.rate_pct != null">{{ it.rate_pct }}%</template>
+                    <template v-else-if="it.tier_bands?.length">tiered</template>
+                    <template v-else>—</template>
+                  </span>
+                  <span v-if="it.corrected?.length" class="fixed">corrected</span>
+                </button>
+                <div v-if="selected && key(selected) === key(it)" class="editor">
+                  <div class="efields">
+                    <label class="efield">
+                      <span class="label">Amount</span>
+                      <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
+                    </label>
+                    <label class="efield wide">
+                      <span class="label">Bills as</span>
+                      <select v-model="draft.billing_class">
+                        <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p v-if="it.corrected?.length" class="asread">
+                    Read from the contract as <strong>{{ money(it.as_read?.amount) }}</strong>,
+                    {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
+                  </p>
+                  <div class="eactions">
+                    <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
+                      {{ saving ? 'Saving…' : 'Save correction' }}
+                    </button>
+                    <button v-if="it.corrected?.length" class="ghost sm" :disabled="saving" @click.stop="revert">
+                      Back to as read
+                    </button>
+                    <span class="muted small">Changes what will be invoiced, straight away.</span>
+                  </div>
                 </div>
               </div>
 
@@ -619,6 +652,11 @@ async function approve() {
 .bill-pane { overflow-y: auto; background: var(--bg); padding: 18px 20px 48px; }
 .pad { padding: 20px 22px; }
 .invoice { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; padding: 16px 18px; margin-bottom: 20px; }
+.sumline { line-height: 1.9; }
+.fleetin {
+  width: 68px; padding: 2px 7px; font-size: 13px; text-align: right;
+  border-radius: 7px; vertical-align: baseline;
+}
 .total { font-family: var(--serif); font-size: 34px; font-weight: 600; line-height: 1.1; margin: 2px 0 4px; }
 .per { font-size: 16px; font-family: var(--sans); color: var(--muted); margin-left: 4px; }
 .flag { margin: 10px 0 0; padding: 9px 12px; border-radius: 9px; font-size: 12.5px; }

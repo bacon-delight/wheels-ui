@@ -35,14 +35,49 @@ const canApprove = computed(() => auth.isProvider)
 
 // A contract yields records in four categories. The tabs are how an analyst works one at a
 // time rather than scrolling past three hundred cards to reach the money.
-const tabs = computed(() =>
-  CATEGORIES.map((c) => ({
+const tabs = computed(() => {
+  const rows = CATEGORIES.map((c) => ({
     ...c,
     count: counts.value[c.key] || 0,
-    flagged: terms.value.some((t) => t.category === c.key && t.needs_review),
-  })),
-)
-const shown = computed(() => terms.value.filter((t) => t.category === tab.value))
+    needsReview: terms.value.filter((t) => t.category === c.key && t.needs_review).length,
+    alert: false,
+  }))
+  // The design system allows one attention pill per tab row. It goes where the most work is.
+  const worst = rows.reduce((a, b) => (b.needsReview > a.needsReview ? b : a), rows[0])
+  if (worst && worst.needsReview) worst.alert = true
+  return rows
+})
+const query = ref('')
+// Search reads the whole record, not just the headline. An analyst looking for "$15" or
+// "per card" or a program name is as likely to be after a value or a frequency as a title,
+// and a search that only matched titles would quietly find nothing.
+function haystack(t) {
+  const parts = [t.title, t.subtitle, t.frequency, t.amount == null ? '' : String(t.amount)]
+  for (const [key, value] of Object.entries(t.record || {})) {
+    if (key === 'citations' || key === 'info_type') continue
+    if (typeof value === 'string' || typeof value === 'number') parts.push(String(value))
+  }
+  parts.push(t.citations?.[0]?.quote || '')
+  return parts.join(' ').toLowerCase()
+}
+const shown = computed(() => {
+  const rows = terms.value.filter((t) => t.category === tab.value)
+  const needle = query.value.trim().toLowerCase()
+  if (!needle) return rows
+  return rows.filter((t) => haystack(t).includes(needle))
+})
+// How many the search found in the categories you are NOT looking at, so a term in another
+// tab is discoverable rather than silently absent.
+const hitsElsewhere = computed(() => {
+  const needle = query.value.trim().toLowerCase()
+  if (!needle) return []
+  return CATEGORIES.filter((c) => c.key !== tab.value)
+    .map((c) => ({
+      ...c,
+      n: terms.value.filter((t) => t.category === c.key && haystack(t).includes(needle)).length,
+    }))
+    .filter((c) => c.n)
+})
 // Approval is demanded on pricing, which is where the money is. Requiring it on all three
 // hundred records would mean nobody ever reaches the end.
 const pendingPricing = computed(
@@ -216,31 +251,74 @@ onMounted(() => {
       </div>
 
       <div class="terms-pane">
-        <div class="tabs">
+        <div class="tabs" role="tablist" aria-label="Term categories">
           <button
             v-for="t in tabs"
             :key="t.key"
             class="tab"
-            :class="{ on: tab === t.key }"
+            :class="{ 'is-active': tab === t.key }"
+            role="tab"
             type="button"
+            :aria-selected="tab === t.key"
             @click="tab = t.key; selected = null"
           >
             {{ t.label }}
-            <span class="tcount">{{ t.count }}</span>
-            <span v-if="t.flagged" class="tdot" title="terms needing review" />
+            <!-- One filled pill in the row at most: if every tab asks for attention, none of
+                 them does. It goes on the category with the most left to review; the rest show
+                 their plain total. -->
+            <span
+              v-if="t.alert"
+              class="badge badge--notification"
+              :title="`${t.needsReview} of ${t.count} need review`"
+              :aria-label="`${t.needsReview} of ${t.count} need review`"
+            >{{ t.needsReview }}</span>
+            <span v-else class="tab__n" :title="`${t.count} terms`">{{ t.count }}</span>
           </button>
         </div>
 
         <div class="tbar">
-          <span class="muted small">{{ shown.length }} term{{ shown.length === 1 ? '' : 's' }}</span>
+          <!-- The compact search that belongs inside a toolbar, rather than a page-width bar. -->
+          <div class="finder" :class="{ 'has-value': query }">
+            <svg class="finder__ico" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 14 14" />
+            </svg>
+            <input
+              v-model="query"
+              class="finder__in"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Search terms, amounts, wording…"
+              aria-label="Search extracted terms"
+            />
+            <button class="finder__x" type="button" aria-label="Clear search" @click="query = ''">
+              <svg viewBox="0 0 13 13" aria-hidden="true"><path d="M2 2 11 11M11 2 2 11" /></svg>
+            </button>
+          </div>
+          <span class="muted small count">
+            {{ shown.length }}<template v-if="query"> of {{ (counts[tab] || 0) }}</template>
+          </span>
           <button
-            v-if="canApprove && pendingInTab"
+            v-if="canApprove && pendingInTab && !query"
             class="primary sm"
             :disabled="bulkBusy"
             @click="approveTab"
           >
             {{ bulkBusy ? 'Approving…' : `Approve all ${pendingInTab}` }}
           </button>
+        </div>
+
+        <!-- A match in another category is still a match; say so rather than letting the
+             search look empty because the reader is standing in the wrong tab. -->
+        <div v-if="query && hitsElsewhere.length" class="elsewhere">
+          Also found in
+          <button
+            v-for="c in hitsElsewhere"
+            :key="c.key"
+            class="link"
+            type="button"
+            @click="tab = c.key; selected = null"
+          >{{ c.label }} ({{ c.n }})</button>
         </div>
 
         <div class="tlist">
@@ -260,6 +338,9 @@ onMounted(() => {
           <p v-if="!terms.length && !loaded" class="muted" style="padding: 20px">Loading…</p>
           <p v-else-if="!terms.length" class="muted" style="padding: 20px">
             No terms extracted yet — run extraction on this document.
+          </p>
+          <p v-else-if="!shown.length && query" class="muted" style="padding: 20px">
+            Nothing here matches “{{ query }}”.
           </p>
           <p v-else-if="!shown.length" class="muted" style="padding: 20px">
             Nothing in this category for this agreement.
@@ -307,7 +388,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.review { height: calc(100vh - 58px); display: flex; flex-direction: column; }
+/* The shell's content column is already exactly the viewport height, so this fills it. The
+   old `calc(100vh - 58px)` subtracted a top bar this layout does not have, which left a band
+   of dead canvas under the split. */
+.review { height: 100%; min-height: 0; display: flex; flex-direction: column; }
 .rhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--line); background: #fff; gap: 12px; }
 .err { color: var(--risk); padding: 8px 20px; }
 .small { font-size: 12px; }
@@ -320,20 +404,65 @@ onMounted(() => {
 .pageno { position: absolute; top: 6px; right: 8px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.85); padding: 1px 6px; border-radius: 4px; }
 
 .terms-pane { display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
-/* The tab strip stays put while the list scrolls: the categories are how you navigate. */
-.tabs { display: flex; gap: 2px; padding: 8px 12px 0; background: #fff; border-bottom: 1px solid var(--line); }
+/* Ecosphere Tabs, section size — these switch a panel, not the whole view, so they take the
+   plain `tabs` rule: equal-width, centred, underlined. The strip stays put while the list
+   scrolls, because the categories are how you navigate. */
+.tabs { display: flex; gap: 0; background: #fff; border-bottom: 1px solid var(--line); }
 .tab {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: none; border: none; border-bottom: 2px solid transparent;
-  padding: 8px 12px 9px; cursor: pointer; font: inherit; font-size: 13px;
-  color: var(--muted); font-weight: 500;
+  flex: 1; height: 42px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  /* The app gives every button a 10px radius and a panel fill. Both have to go here, or the
+     underline curves up at its ends and the tab reads as a pressed key rather than a tab. */
+  border: 0; border-radius: 0; background: none; padding: 0; cursor: pointer;
+  font: 400 14px/1 var(--sans); color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color 0.12s ease, border-color 0.18s ease;
 }
-.tab:hover { color: var(--ink); }
-.tab.on { color: var(--accent-ink); border-bottom-color: var(--accent); font-weight: 600; }
-.tcount { font-size: 11px; color: var(--muted); background: var(--panel-2, #eef1f5); border-radius: 999px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
-.tab.on .tcount { background: var(--accent-weak); color: var(--accent-ink); }
-.tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
-.tbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+.tab:hover { color: var(--ink); background: none; border-color: transparent; border-bottom-color: transparent; }
+.tab.is-active:hover { border-bottom-color: var(--accent); }
+.tab.is-active { color: var(--ink); font-weight: 500; border-bottom-color: var(--accent); }
+/* A plain figure for a neutral total; it goes accent on the tab you are in, so only the
+   current count carries weight. Tabular figures keep a changing number from shifting its
+   neighbour. */
+.tab__n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab.is-active .tab__n { color: var(--accent); }
+/* The filled pill takes the accent on a tab, never the danger red it uses standalone: a tab
+   row is navigation, and a red pill beside the underline reads as something having gone wrong. */
+.tab .badge--notification {
+  min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
+  margin-left: 1px; background: var(--accent); color: #fff;
+  font-weight: 500; font-size: 11px; line-height: 19px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tab:not(.is-active) .badge--notification { background: var(--muted); }
+.tbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; }
+.tbar .count { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Ecosphere's compact toolbar search. */
+.finder {
+  display: flex; align-items: center; flex: 1 1 auto; min-width: 140px; height: 36px;
+  padding: 0 5px 0 0;
+  border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.finder:hover { border-color: var(--muted); }
+.finder:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.finder__ico {
+  flex: 0 0 auto; width: 15px; height: 15px; margin: 0 8px 0 12px; color: var(--muted);
+  fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round;
+}
+.finder:focus-within .finder__ico { color: var(--accent); }
+.finder__in { flex: 1; min-width: 0; height: 100%; border: 0; background: none; font: inherit; font-size: 13px; color: var(--ink); }
+.finder__in::placeholder { color: var(--muted); }
+.finder__in:focus { outline: none; }
+.finder__in::-webkit-search-cancel-button, .finder__in::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+/* Shown only when there is something to clear. */
+.finder__x { display: none; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }
+.finder.has-value .finder__x { display: grid; }
+.finder__x:hover { color: var(--ink); background: var(--bg); }
+.finder__x svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.elsewhere { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--muted); }
+.elsewhere .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.elsewhere .link:hover { text-decoration: underline; }
 .tlist { flex: 1; overflow-y: auto; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
 .violated :deep(.tcard) { border-left: 3px solid var(--warn); background: var(--warn-weak); }
 

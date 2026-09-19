@@ -99,6 +99,8 @@ export const useEngagementStore = defineStore('engagement', {
     // engagement, since nothing else on the page needs them.
     candidates: [],
     candTotal: 0,
+    uploadStatus: '', // what the upload is doing right now, named file by file
+
     searching: false,
     candSeq: 0,
     busy: '', // verb of the in-flight action ('' = idle)
@@ -300,7 +302,11 @@ export const useEngagementStore = defineStore('engagement', {
       this.busy = 'upload'
       this.err = ''
       try {
-        for (const file of list) {
+        for (const [i, file] of list.entries()) {
+          // Named, numbered and staged, because a multi-megabyte PUT is the longest wait in
+          // the app and a single motionless word for all of it reads as a hung screen.
+          const of = list.length > 1 ? ` (${i + 1} of ${list.length})` : ''
+          this.uploadStatus = `Uploading ${file.name}${of}…`
           const body = {
             filename: file.name,
             submission_id: this.submission.submission_id,
@@ -309,14 +315,29 @@ export const useEngagementStore = defineStore('engagement', {
           const { data: p } = await api.post(
             `/engagements/${this.eid}/documents:presign`, body,
           )
-          await fetch(p.upload_url, {
-            method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file,
-          })
+          try {
+            const put = await fetch(p.upload_url, {
+              method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file,
+            })
+            // A presigned PUT that fails answers with a plain status rather than throwing, so
+            // an unchecked upload left the row pointing at a key holding nothing.
+            if (!put.ok) throw new Error(`the storage service refused it (${put.status})`)
+          } catch (put) {
+            // The document row is written when the upload is presigned, since the key is built
+            // from it. If the file never arrives, take the row back — otherwise the engagement
+            // holds an agreement that can never be read and sits on "reading…" for ever.
+            await api
+              .delete(`/engagements/${this.eid}/documents/${p.document_id}/versions/${p.version}`)
+              .catch(() => {})
+            throw new Error(`${file.name} was not uploaded — ${put.message}. Nothing was kept.`)
+          }
         }
+        this.uploadStatus = 'Reading the file…'
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       }
+      this.uploadStatus = ''
       this.busy = ''
     },
     // A renewal, an added lease or service, or a reissued document all change the terms, so

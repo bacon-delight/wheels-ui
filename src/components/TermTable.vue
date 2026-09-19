@@ -123,6 +123,10 @@ const unplaced = (t) =>
           <th v-for="c in columns" :key="c.key" :class="{ 'col-num': c.num }" :style="c.width ? { width: c.width } : null">
             {{ c.label }}
           </th>
+          <!-- How sure the model was about this one. It was lost when the cards became a
+               ledger; it belongs on the row, because it is the reason a term is worth a
+               second look before it is approved. -->
+          <th class="col-conf" title="Extraction confidence">Conf.</th>
           <th class="col-state">State</th>
         </tr>
       </thead>
@@ -150,6 +154,10 @@ const unplaced = (t) =>
               <span v-else class="none">—</span>
             </td>
 
+            <td class="col-conf" :class="{ weak: t.confidence < 0.8 }">
+              {{ t.confidence ? Math.round(t.confidence * 100) + '%' : '—' }}
+            </td>
+
             <td class="col-state">
               <span class="badge" :class="state(t).cls">{{ state(t).label }}</span>
             </td>
@@ -158,12 +166,21 @@ const unplaced = (t) =>
           <!-- The detail opens under its own row rather than in a panel, so the list never
                moves and the reader keeps their place in a list of three hundred. -->
           <tr v-if="selectedId === t.record_id" class="detail">
-            <td :colspan="columns.length + 1">
+            <td :colspan="columns.length + 2">
               <div v-if="t.changed_since_approval" class="moved">
                 This term changed since it was approved, so the approval was withdrawn.
               </div>
 
               <dl class="kv">
+                <dt>Confidence</dt>
+                <dd>
+                  <span class="num" :class="{ weak: t.confidence < 0.8 }">
+                    {{ t.confidence ? Math.round(t.confidence * 100) + '%' : 'not scored' }}
+                  </span>
+                  <span v-if="t.confidence && t.confidence < 0.8" class="muted">
+                    — below the review threshold, so this term is flagged
+                  </span>
+                </dd>
                 <template v-for="[key, label, kind] in spec(t)" :key="key">
                   <dt>{{ label }}</dt>
                   <dd>
@@ -290,6 +307,9 @@ const unplaced = (t) =>
 .kv dd { margin: 0; font-size: var(--t-base); line-height: 1.5; min-width: 0; }
 .kv dd .long { white-space: pre-wrap; }
 .kv dd .num { font-variant-numeric: tabular-nums; }
+.col-conf { width: 56px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Only a weak read is coloured. Three hundred rows of confident green would say nothing. */
+.weak { color: var(--warn); font-weight: 600; }
 .kv input, .kv textarea { width: 100%; }
 .catalog { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 .catalog.unplaced { color: var(--warn); }

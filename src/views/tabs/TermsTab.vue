@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watchEffect } from 'vue'
+import { computed, onMounted, ref, watch, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
@@ -88,6 +88,25 @@ function onUpload(e) {
   if (files?.length) eng.uploadFiles(files)
   e.target.value = ''
 }
+// A revision replaces the agreement it revises. Uploading it as a new document instead left
+// the old one superseded beside it, both at version 1, and nothing to compare — which is why
+// a re-upload never reached version 2 and change verification stayed silent.
+const revisable = computed(() => eng.reviewDocs)
+const revising = ref('')
+watch(
+  revisable,
+  (docs) => {
+    if (!docs.some((d) => d.document_id === revising.value)) {
+      revising.value = docs.length === 1 ? docs[0].document_id : ''
+    }
+  },
+  { immediate: true },
+)
+function onRevise(e) {
+  const files = e.target.files
+  if (files?.length && revising.value) eng.uploadFiles(files, revising.value)
+  e.target.value = ''
+}
 // Naming the document marks this as a revision of that agreement rather than another one.
 function onReplace(documentId, e) {
   const f = e.target.files?.[0]
@@ -109,6 +128,10 @@ const addedInThisCycle = (d) => eng.isAmendment && (d.cycle || 1) === (eng.submi
 // approved, so calling it plainly "superseded" would misdescribe what the customer pays under
 // today. An agreement superseded before the amendment is not in that position.
 const stillBilling = (d) => eng.liveDuringAmendment && eng.liveDocIds.has(d.document_id)
+// Shown once the replacement has landed, so the upload visibly produced something.
+const revised = computed(() =>
+  eng.reviewDocs.find((d) => d.document_id === revising.value && d.current_version > 1),
+)
 
 // Removing an agreement destroys its extracted terms too, so it asks first.
 const pendingRemoval = ref(null)
@@ -218,7 +241,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <p v-if="eng.busy === 'upload'" class="muted small" style="margin-top: 10px">Uploading…</p>
+      <p v-if="eng.uploadStatus" class="muted small" style="margin-top: 10px">{{ eng.uploadStatus }}</p>
 
       <div class="docs">
         <div v-for="d in eng.currentDocs" :key="d.document_id" class="doc">
@@ -487,10 +510,34 @@ onMounted(() => {
         <div class="opt">
           <strong>Re-upload the updated agreement</strong>
           <p class="muted small">Upload a revised document, add a note for the customer, then re-validate.</p>
-          <div class="row">
-            <label class="btn-link">Upload revised agreement<input type="file" accept="application/pdf" multiple hidden @change="onUpload" /></label>
-            <span v-if="eng.busy?.startsWith('upload')" class="muted small">uploading…</span>
+          <div class="row" style="flex-wrap: wrap; gap: 10px">
+            <!-- With one agreement in force there is nothing to ask; with two, which one is
+                 being revised is the difference between a new version and a new document. -->
+            <select v-if="revisable.length > 1" v-model="revising" class="pickdoc">
+              <option value="">Which agreement is this?</option>
+              <option v-for="d in revisable" :key="d.document_id" :value="d.document_id">
+                {{ d.doc_type }} — {{ d.filename }}
+              </option>
+            </select>
+            <label class="btn-link" :class="{ disabled: !revising || !!eng.busy }">
+              Upload revised agreement
+              <input
+                type="file"
+                accept="application/pdf"
+                hidden
+                :disabled="!revising || !!eng.busy"
+                @change="onRevise"
+              />
+            </label>
+            <span v-if="eng.uploadStatus" class="muted small">{{ eng.uploadStatus }}</span>
+            <span v-else-if="revisable.length > 1 && !revising" class="muted small">
+              Choose which agreement this replaces.
+            </span>
           </div>
+          <p v-if="revised" class="revised">
+            {{ revised.filename }} is now version {{ revised.current_version }} of the
+            {{ revised.doc_type }}. Re-validate to read it and check it against the request.
+          </p>
           <textarea v-model="changeNote" rows="2" placeholder="Note to the client about what changed…" style="margin-top: 10px" />
           <button class="primary" style="margin-top: 8px" :disabled="!!eng.busy" @click="eng.action('reupload', { comment: changeNote })">{{ eng.busy === 'reupload' ? 'Re-validating…' : 'Re-validate & resubmit' }}</button>
         </div>
@@ -632,6 +679,9 @@ onMounted(() => {
 .pad { padding: 20px 22px; }
 .small { font-size: 12px; }
 .docs { display: grid; gap: 10px; }
+.pickdoc { width: auto; min-width: 220px; height: 34px; padding: 0 10px; font-size: 12.5px; }
+.btn-link.disabled { opacity: 0.5; pointer-events: none; }
+.revised { margin: 10px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--accent-weak); color: var(--accent-ink); font-size: 12.5px; }
 .doc { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .dinfo { min-width: 0; }
 .prog { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

@@ -35,18 +35,9 @@ const canApprove = computed(() => auth.isProvider)
 
 // A contract yields records in four categories. The tabs are how an analyst works one at a
 // time rather than scrolling past three hundred cards to reach the money.
-const tabs = computed(() => {
-  const rows = CATEGORIES.map((c) => ({
-    ...c,
-    count: counts.value[c.key] || 0,
-    needsReview: terms.value.filter((t) => t.category === c.key && t.needs_review).length,
-    alert: false,
-  }))
-  // The design system allows one attention pill per tab row. It goes where the most work is.
-  const worst = rows.reduce((a, b) => (b.needsReview > a.needsReview ? b : a), rows[0])
-  if (worst && worst.needsReview) worst.alert = true
-  return rows
-})
+const tabs = computed(() =>
+  CATEGORIES.map((c) => ({ ...c, count: counts.value[c.key] || 0 })),
+)
 const query = ref('')
 // Search reads the whole record, not just the headline. An analyst looking for "$15" or
 // "per card" or a program name is as likely to be after a value or a frequency as a title,
@@ -290,16 +281,12 @@ onMounted(() => {
             @click="tab = t.key; selected = null"
           >
             {{ t.label }}
-            <!-- One filled pill in the row at most: if every tab asks for attention, none of
-                 them does. It goes on the category with the most left to review; the rest show
-                 their plain total. -->
-            <span
-              v-if="t.alert"
-              class="badge badge--notification"
-              :title="`${t.needsReview} of ${t.count} need review`"
-              :aria-label="`${t.needsReview} of ${t.count} need review`"
-            >{{ t.needsReview }}</span>
-            <span v-else class="tab__n" :title="`${t.count} terms`">{{ t.count }}</span>
+            <!-- Every tab shows the same kind of number: how many terms are in there. The
+                 design system's filled pill was tried here for "most left to review" and read
+                 as arbitrary — one circled figure among plain ones, saying 8 while the header
+                 said 15, because they count different things. The attention figure belongs in
+                 one place, labelled, and that is the header. -->
+            <span class="tab__n" :title="`${t.count} terms`">{{ t.count }}</span>
           </button>
         </div>
 
@@ -458,18 +445,7 @@ onMounted(() => {
    neighbour. */
 .tab__n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tab.is-active .tab__n { color: var(--accent); }
-/* The filled pill takes the accent on a tab, never the danger red it uses standalone: a tab
-   row is navigation, and a red pill beside the underline reads as something having gone wrong. */
-.tab .badge--notification {
-  /* Grid with place-items centres on both axes whatever the base .badge sets. Relying on the
-     inherited flex alignment plus a line-height left the digit sitting high in the pill. */
-  display: inline-grid; place-items: center;
-  min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
-  margin-left: 1px; background: var(--accent); color: #fff;
-  font-weight: 500; font-size: 11px; line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.tab:not(.is-active) .badge--notification { background: var(--muted); }
+
 .tbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #fff; }
 .tbar .count { margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* Ecosphere's compact toolbar search. */

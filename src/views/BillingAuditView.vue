@@ -2,7 +2,6 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import Dialog from '../components/Dialog.vue'
 import { api } from '../services/api'
 import { docLabel, money, useEngagementStore } from '../stores/engagement'
 
@@ -15,6 +14,11 @@ import { docLabel, money, useEngagementStore } from '../stores/engagement'
  * not a re-reading of the terms, and every line links back to the clause it was built from:
  * clicking a fee scrolls the contract to the sentence it came from and highlights it. A
  * number nobody can trace is a number nobody can approve.
+ *
+ * And what an auditor finds, an auditor fixes — here, against the clause, rather than sending
+ * the engagement back to be read again and waiting days to change a number already on screen.
+ * The correction sits beside the reading rather than over it: the row goes on showing what the
+ * contract was read as saying, so a fix is something you can see was made.
  *
  * The arithmetic here deliberately mirrors `app/billing/estimate.py` line for line. If this
  * screen and the stored figure ever disagree, that is shown rather than reconciled away.
@@ -31,8 +35,6 @@ const activeDoc = ref(null)
 const loaded = ref(false)
 const busy = ref('')
 const err = ref('')
-const showReject = ref(false)
-const comment = ref('')
 const pageEls = ref({})
 
 // The same draggable split as the terms review, and the same remembered width: somebody who
@@ -122,9 +124,13 @@ const recurring = computed(() =>
     .filter((it) => it.per_unit > 0)
     .sort((a, b) => b.per_unit - a.per_unit),
 )
+// Every class the backend can produce, so a group heading is never a raw enum. `recurring`
+// is here because a charge can be classed recurring and still contribute nothing per vehicle
+// — a percentage, or tier bands that start above this fleet — and it has to land somewhere.
 const OUTSIDE = {
-  usage: 'As incurred — per transaction, per card, per claim',
+  recurring: 'Recurring, but not a flat per-vehicle amount',
   recurring_per_driver: 'Per driver, per month',
+  usage: 'As incurred — per transaction, per card, per claim',
   one_time: 'One-off',
   credit: 'Rebates and incentives owed to the customer',
 }
@@ -212,13 +218,16 @@ onMounted(async () => {
 watch(activeDoc, (id) => loadPages(docs.value.find((d) => d.document_id === id)))
 
 async function pick(it) {
-  if (!it.citations?.length) return
   if (selected.value && key(selected.value) === key(it)) {
     selected.value = null
     return
   }
+  // Selecting a charge is the same gesture as correcting it: the clause you are checking it
+  // against and the field you would change it in belong on screen together.
   selected.value = it
-  const cite = it.citations[0]
+  beginEdit(it)
+  const cite = (it.citations || [])[0]
+  if (!cite) return
   if (it.document_id && it.document_id !== activeDoc.value) {
     activeDoc.value = it.document_id
     await loadPages(docs.value.find((d) => d.document_id === it.document_id))
@@ -237,6 +246,58 @@ const rectStyle = (b) => ({
   height: `${(b.y1 - b.y0) * 100}%`,
 })
 
+// How a charge can be told to bill. The wording is the auditor's question — "what is this,
+// really" — rather than the schema's field names.
+const CLASSES = [
+  ['recurring', 'On every invoice — per vehicle, per month'],
+  ['recurring_per_driver', 'Per driver, per month'],
+  ['usage', 'As incurred — per transaction, per card, per claim'],
+  ['one_time', 'One-off'],
+  ['credit', 'A rebate owed to the customer'],
+]
+const draft = ref({ amount: null, billing_class: '' })
+const saving = ref(false)
+
+function beginEdit(it) {
+  draft.value = { amount: it.amount, billing_class: it.billing_class || 'usage' }
+}
+const dirty = computed(() => {
+  const it = selected.value
+  if (!it) return false
+  return (
+    Number(draft.value.amount) !== Number(it.amount) ||
+    draft.value.billing_class !== it.billing_class
+  )
+})
+async function saveEdit() {
+  const it = selected.value
+  if (!it?.record_id) return
+  saving.value = true
+  err.value = ''
+  try {
+    const body = {}
+    if (Number(draft.value.amount) !== Number(it.amount)) body.amount = Number(draft.value.amount)
+    if (draft.value.billing_class !== it.billing_class) body.billing_class = draft.value.billing_class
+    const { data } = await api.patch(`/engagements/${eid}/billing/items/${it.record_id}`, body)
+    billing.value = data
+    // The list is rebuilt, so the object held here is stale; find the same charge again.
+    const fresh = items.value.find((i) => i.record_id === it.record_id)
+    selected.value = fresh || null
+    if (fresh) beginEdit(fresh)
+  } catch (e) {
+    err.value = e.response?.data?.detail || e.message
+  }
+  saving.value = false
+}
+function revert() {
+  const it = selected.value
+  if (!it) return
+  draft.value = {
+    amount: it.as_read?.amount ?? it.amount,
+    billing_class: it.as_read?.billing_class || it.billing_class,
+  }
+}
+
 async function approve() {
   busy.value = 'approve'
   err.value = ''
@@ -250,22 +311,6 @@ async function approve() {
     err.value = e.response?.data?.detail || e.message
   }
   busy.value = ''
-}
-async function reject() {
-  busy.value = 'reject'
-  err.value = ''
-  try {
-    await api.post(
-      `/engagements/${eid}/submissions/${eng.submission.submission_id}:audit-request-changes`,
-      { comment: comment.value },
-    )
-    await eng.load(eid)
-    router.push(`/engagements/${eid}`)
-  } catch (e) {
-    err.value = e.response?.data?.detail || e.message
-  }
-  busy.value = ''
-  showReject.value = false
 }
 </script>
 
@@ -284,7 +329,6 @@ async function reject() {
           <strong>{{ money(monthlyTotal) }}</strong>/mo
         </span>
         <template v-if="eng.status === 'PENDING_BILLING_AUDIT'">
-          <button class="ghost sm" :disabled="!!busy" @click="showReject = true">Request changes</button>
           <button class="primary sm" :disabled="!!busy" @click="approve">
             {{ busy === 'approve' ? 'Approving…' : 'Approve &amp; go live' }}
           </button>
@@ -371,13 +415,15 @@ async function reject() {
               <h3>On every invoice</h3>
               <span class="muted small">per vehicle, per month</span>
             </div>
-            <p class="muted small note">Click a charge to see the clause it was read from.</p>
+            <p class="muted small note">
+              Click a charge to see the clause it was read from — and to correct it.
+            </p>
             <button
               v-for="it in recurring"
               :key="key(it)"
               type="button"
               class="line"
-              :class="{ sel: selected && key(selected) === key(it), nocite: !it.citations?.length }"
+              :class="{ sel: selected && key(selected) === key(it) }"
               @click="pick(it)"
             >
               <span class="lmain">
@@ -390,7 +436,43 @@ async function reject() {
               </span>
               <span class="lrate muted">{{ money(it.per_unit) }} × {{ fleet }}</span>
               <span class="lamt">{{ money(it.per_unit * fleet) }}</span>
+              <span v-if="it.corrected?.length" class="fixed">corrected</span>
             </button>
+            <div v-if="selected && key(selected) === key(it)" class="editor">
+              <div class="efields">
+                <label class="efield">
+                  <span class="label">Amount</span>
+                  <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
+                </label>
+                <label class="efield wide">
+                  <span class="label">Bills as</span>
+                  <select v-model="draft.billing_class">
+                    <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
+                  </select>
+                </label>
+              </div>
+              <!-- What the contract was read as saying stays on the row, so a correction is
+                   something you can see was made rather than a number that quietly disagrees
+                   with the clause highlighted beside it. -->
+              <p v-if="it.corrected?.length" class="asread">
+                Read from the contract as
+                <strong>{{ money(it.as_read?.amount) }}</strong>,
+                {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
+              </p>
+              <div class="eactions">
+                <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
+                  {{ saving ? 'Saving…' : 'Save correction' }}
+                </button>
+                <button
+                  v-if="it.corrected?.length"
+                  class="ghost sm"
+                  :disabled="saving"
+                  @click.stop="revert"
+                >Back to as read</button>
+                <span class="muted small">Changes what will be invoiced, straight away.</span>
+              </div>
+            </div>
+
             <p v-if="!recurring.length && loaded" class="muted note">
               Nothing recurring — this agreement charges only as things happen.
             </p>
@@ -415,7 +497,7 @@ async function reject() {
                 :key="key(it)"
                 type="button"
                 class="line thin"
-                :class="{ sel: selected && key(selected) === key(it), nocite: !it.citations?.length }"
+                :class="{ sel: selected && key(selected) === key(it) }"
                 @click="pick(it)"
               >
                 <span class="lmain">
@@ -428,7 +510,43 @@ async function reject() {
                   <template v-else-if="it.tier_bands?.length">tiered</template>
                   <template v-else>—</template>
                 </span>
+                <span v-if="it.corrected?.length" class="fixed">corrected</span>
               </button>
+              <div v-if="selected && key(selected) === key(it)" class="editor">
+                <div class="efields">
+                  <label class="efield">
+                    <span class="label">Amount</span>
+                    <input v-model.number="draft.amount" type="number" step="0.01" min="0" />
+                  </label>
+                  <label class="efield wide">
+                    <span class="label">Bills as</span>
+                    <select v-model="draft.billing_class">
+                      <option v-for="[value, text] in CLASSES" :key="value" :value="value">{{ text }}</option>
+                    </select>
+                  </label>
+                </div>
+                <!-- What the contract was read as saying stays on the row, so a correction is
+                     something you can see was made rather than a number that quietly disagrees
+                     with the clause highlighted beside it. -->
+                <p v-if="it.corrected?.length" class="asread">
+                  Read from the contract as
+                  <strong>{{ money(it.as_read?.amount) }}</strong>,
+                  {{ OUTSIDE[it.as_read?.billing_class] || it.as_read?.billing_class }}.
+                </p>
+                <div class="eactions">
+                  <button class="primary sm" :disabled="!dirty || saving" @click.stop="saveEdit">
+                    {{ saving ? 'Saving…' : 'Save correction' }}
+                  </button>
+                  <button
+                    v-if="it.corrected?.length"
+                    class="ghost sm"
+                    :disabled="saving"
+                    @click.stop="revert"
+                  >Back to as read</button>
+                  <span class="muted small">Changes what will be invoiced, straight away.</span>
+                </div>
+              </div>
+
             </div>
           </section>
 
@@ -469,28 +587,6 @@ async function reject() {
       </div>
     </div>
 
-    <Dialog
-      :open="showReject"
-      title="Send the billing back"
-      subtitle="The engagement returns to review so the terms behind these charges can be corrected."
-      @close="showReject = false"
-    >
-      <label class="fld">
-        <span class="label">What needs changing?</span>
-        <textarea
-          v-model="comment"
-          rows="4"
-          placeholder="The maintenance fee is billing per vehicle but the contract says per driver…"
-        />
-      </label>
-      <template #footer>
-        <span class="sp" />
-        <button class="ghost" @click="showReject = false">Cancel</button>
-        <button class="primary" :disabled="!comment.trim() || !!busy" @click="reject">
-          {{ busy === 'reject' ? 'Sending…' : 'Send back' }}
-        </button>
-      </template>
-    </Dialog>
   </div>
 </template>
 
@@ -543,8 +639,6 @@ section { margin-bottom: 24px; }
 }
 .line:hover { background: var(--panel); border-bottom-color: var(--line); }
 .line.sel { background: var(--accent-weak); border-color: var(--accent); border-radius: 9px; }
-/* A charge with no citation cannot be checked against the page; it should not look clickable. */
-.line.nocite { cursor: default; opacity: 0.82; }
 .line.thin { grid-template-columns: minmax(0, 1fr) auto; }
 .lmain { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ltitle { font-weight: 500; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -558,6 +652,32 @@ section { margin-bottom: 24px; }
 .sched td { padding: 8px; border-top: 1px solid var(--line); font-size: 13px; }
 .sched tr:first-child td { border-top: none; }
 .sched .r { text-align: right; font-variant-numeric: tabular-nums; }
-.fld { display: flex; flex-direction: column; gap: 6px; }
+/* On its own line under the title, deliberately rather than by falling off the end of the
+   grid: it belongs with what the charge is, not with what it costs. */
+.fixed {
+  grid-column: 1; justify-self: start; margin-top: 4px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;
+  color: var(--accent-ink); background: var(--accent-weak); padding: 1px 6px; border-radius: 5px;
+}
+.editor {
+  border: 1px solid var(--accent); border-top: none; border-radius: 0 0 9px 9px;
+  background: var(--panel); padding: 12px 12px 13px; margin: -1px 0 8px;
+}
+.efields { display: flex; gap: 10px; flex-wrap: wrap; }
+.efield { display: flex; flex-direction: column; gap: 5px; width: 110px; }
+.efield.wide { flex: 1; min-width: 190px; width: auto; }
+.efield input, .efield select { width: 100%; }
+.asread { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+.eactions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 11px; }
+
+/* Below this the two panes cannot both be useful side by side: the contract becomes a
+   thumbnail and the billing figures wrap. They stack instead, contract first. */
+@media (max-width: 900px) {
+  .split { grid-template-columns: 1fr; grid-template-rows: minmax(240px, 45vh) 7px 1fr; }
+  .handle { cursor: default; }
+  .doc-pane, .bill-pane { min-width: 0; }
+  .line, .line.thin { grid-template-columns: minmax(0, 1fr) auto; }
+  .lrate { display: none; }
+}
 @media (max-width: 900px) { .hide-sm { display: none; } }
 </style>

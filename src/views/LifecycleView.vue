@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import StatusPill from '../components/StatusPill.vue'
 import { SCOPE_LABELS } from '../stores/engagement'
-import { STAGES, stageMeta, useLifecycleStore } from '../stores/lifecycle'
+import { ALL_STAGES, stageLabel, stageMeta, useLifecycleStore } from '../stores/lifecycle'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,9 +16,13 @@ const stageKey = computed(() =>
   route.params.stage ? String(route.params.stage).toUpperCase() : null,
 )
 const stage = computed(() => (stageKey.value ? stageMeta(stageKey.value) : null))
-const rows = computed(() =>
-  stageKey.value ? lc.inStage(stageKey.value) : lc.inFlight,
-)
+// A key the URL names but the product does not have. Rendering it as a step would state
+// something false with total confidence, so the board takes over and says what happened.
+const unknownStage = computed(() => !!stageKey.value && !stage.value)
+const rows = computed(() => {
+  if (unknownStage.value) return []
+  return stageKey.value ? lc.inStage(stageKey.value) : lc.inFlight
+})
 
 const age = (iso) => {
   if (!iso) return '—'
@@ -44,11 +48,14 @@ function open(e) {
     <header class="head">
       <div>
         <h1>{{ stage ? stage.label : 'Lifecycle' }}</h1>
-        <p class="muted sub">
+        <p v-if="unknownStage" class="muted sub">
+          There is no step called “{{ route.params.stage }}”. Pick one below.
+        </p>
+        <p v-else class="muted sub">
           {{ stage ? stage.blurb : 'Every contract that has not finished, and the step it is standing in.' }}
         </p>
       </div>
-      <router-link v-if="stage" to="/lifecycle" class="btn-link">← All steps</router-link>
+      <router-link v-if="stageKey" to="/lifecycle" class="btn-link">← All steps</router-link>
     </header>
 
     <p v-if="lc.err" class="err">{{ lc.err }}</p>
@@ -56,14 +63,13 @@ function open(e) {
     <!-- The board: the five steps in order, each a button into its own list. -->
     <div class="board">
       <router-link
-        v-for="(s, i) in STAGES"
+        v-for="s in ALL_STAGES"
         :key="s.key"
         :to="`/lifecycle/${s.key.toLowerCase()}`"
         class="col"
         :class="{ 'is-here': stageKey === s.key, empty: !lc.countFor(s.key) }"
       >
         <div class="colhead">
-          <span class="n">{{ i + 1 }}</span>
           <span class="lbl">{{ s.label }}</span>
         </div>
         <div class="count">{{ lc.countFor(s.key) }}</div>
@@ -90,14 +96,16 @@ function open(e) {
             <tr v-for="e in rows" :key="e.engagement_id" class="erow" @click="open(e)">
               <td><span class="ename">{{ e.name }}</span></td>
               <td class="muted">{{ e.client_name }}</td>
-              <td v-if="!stageKey" class="muted">{{ stageMeta(e.stage).label }}</td>
+              <td v-if="!stageKey" class="muted">{{ stageLabel(e.stage) }}</td>
               <td><StatusPill v-if="e.status" :status="e.status" /></td>
               <td class="muted">{{ SCOPE_LABELS[e.scope] || 'Pending upload' }}</td>
               <td class="r" :class="{ stale: stale(e.created_at) }">{{ age(e.created_at) }}</td>
             </tr>
             <tr v-if="!rows.length">
               <td :colspan="stageKey ? 5 : 6" class="muted empty-row">
-                <template v-if="!lc.loaded">Loading…</template>
+                <template v-if="lc.err">Nothing could be loaded.</template>
+                <template v-else-if="!lc.loaded">Loading…</template>
+                <template v-else-if="unknownStage">Pick a step above.</template>
                 <template v-else-if="stage">Nothing is in {{ stage.label }} right now.</template>
                 <template v-else>Every engagement has completed its lifecycle.</template>
               </td>
@@ -108,8 +116,8 @@ function open(e) {
     </div>
 
     <p class="muted foot">
-      {{ lc.countFor('ACTIVE') }} engagements have completed the lifecycle and are billing.
-      <router-link to="/finance">See the money →</router-link>
+      What the live engagements are worth is on
+      <router-link to="/finance">Finance</router-link>.
     </p>
   </div>
 </template>
@@ -122,7 +130,7 @@ function open(e) {
 .err { color: var(--risk); background: var(--risk-weak); padding: 10px 14px; border-radius: 10px; }
 
 /* Five columns that add up to the pipeline, each a way in. */
-.board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.board { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
 .col {
   display: flex; flex-direction: column; gap: 4px; padding: 14px 16px;
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -132,10 +140,6 @@ function open(e) {
 .col.is-here { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
 .col.empty .count { color: var(--muted); }
 .colhead { display: flex; align-items: center; gap: 8px; }
-.colhead .n {
-  width: 19px; height: 19px; border-radius: 999px; display: inline-grid; place-items: center;
-  background: var(--accent-weak); color: var(--accent-ink); font-size: 11px; font-weight: 700;
-}
 .colhead .lbl { font-weight: 600; font-size: 13.5px; }
 .count { font-family: var(--serif); font-size: 30px; font-weight: 600; line-height: 1.1; }
 .blurb { font-size: 12px; line-height: 1.45; }
@@ -156,6 +160,7 @@ th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: 
 .stale { color: var(--warn); font-weight: 600; }
 .empty-row { padding: 20px 16px; }
 .foot { font-size: 13px; margin: 0; }
-@media (max-width: 1100px) { .board { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1340px) { .board { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) { .board { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .board { grid-template-columns: 1fr; } }
 </style>

@@ -86,6 +86,16 @@ input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; border-ra
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .muted { color: var(--muted); }
 .row { display: flex; gap: 10px; align-items: center; }
+/* A link that reads as a button. Lived in one component's scoped block while four others used
+   it, so it was styled on one screen and bare on the rest. */
+.btn-link {
+  border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 14px;
+  border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500;
+  color: var(--ink); text-decoration: none; display: inline-block;
+}
+.btn-link:hover { border-color: var(--muted); text-decoration: none; }
+.btn-link.sm { padding: 5px 11px; font-size: 12.5px; }
+.btn-link.disabled { opacity: 0.5; pointer-events: none; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .grid { display: grid; gap: 14px; }

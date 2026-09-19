@@ -3,7 +3,7 @@ import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useAuthStore } from './stores/auth'
-import { STAGES, useLifecycleStore } from './stores/lifecycle'
+import { ALL_STAGES, useLifecycleStore } from './stores/lifecycle'
 import logo from './assets/wheels-logo.png'
 
 const auth = useAuthStore()
@@ -26,11 +26,6 @@ const navActive = computed(() => {
 // question, and an extra click to see the answer is an extra click every time.
 const lifecycle = useLifecycleStore()
 const openLifecycle = computed(() => navActive.value === 'lifecycle')
-// Which step is being looked at, or '' for the board of all five. Both are selections, and a
-// sidebar that marks neither leaves you guessing which page you are on.
-const openStep = computed(() =>
-  openLifecycle.value ? String(route.params.stage || '').toLowerCase() : null,
-)
 watch(
   () => [auth.isProvider, openLifecycle.value],
   ([isProvider, open]) => {
@@ -67,22 +62,16 @@ const initials = computed(() =>
         <!-- Expanded only while you are in it: five permanent sub-items would crowd out
              everything else in the sidebar for the sake of a page nobody is on. -->
         <div v-if="auth.isProvider && openLifecycle" class="substeps">
-          <!-- The board is one of the choices, not the absence of one. -->
-          <router-link to="/lifecycle" class="substep" :class="{ active: !openStep }">
-            <span class="stepn">·</span>
-            <span class="steplabel">All steps</span>
-            <span v-if="lifecycle.inFlight.length" class="stepn n">{{ lifecycle.inFlight.length }}</span>
-          </router-link>
+          <!-- Which step is selected comes from the router's own exact-active class rather
+               than a second copy of the matching logic here, which can only drift from it. -->
           <router-link
-            v-for="(s, i) in STAGES"
+            v-for="s in ALL_STAGES"
             :key="s.key"
             :to="`/lifecycle/${s.key.toLowerCase()}`"
             class="substep"
-            :class="{ active: openStep === s.key.toLowerCase() }"
           >
-            <span class="stepn">{{ i + 1 }}</span>
             <span class="steplabel">{{ s.label }}</span>
-            <span v-if="lifecycle.countFor(s.key)" class="stepn n">{{ lifecycle.countFor(s.key) }}</span>
+            <span v-if="lifecycle.countFor(s.key)" class="stepn">{{ lifecycle.countFor(s.key) }}</span>
           </router-link>
         </div>
         <router-link v-if="auth.isProvider" to="/finance" class="navitem" :class="{ active: navActive === 'finance' }">
@@ -153,19 +142,20 @@ const initials = computed(() =>
 /* The rule above it draws the branch; the selected step claims a piece of it, so which one
    you are on is legible without reading the labels. */
 .substep { position: relative; }
-.substep.active { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
-.substep.active::before {
-  content: ''; position: absolute; left: -15px; top: 6px; bottom: 6px;
-  width: 2px; border-radius: 999px; background: var(--sky);
+.substep.router-link-exact-active {
+  background: rgba(255, 255, 255, 0.16); color: #fff; font-weight: 600;
 }
-.substep.active .stepn { color: #fff; }
+.substep.router-link-exact-active::before {
+  content: ''; position: absolute; left: -15px; top: 4px; bottom: 4px;
+  width: 3px; border-radius: 999px; background: var(--sky);
+}
 .steplabel { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* The step's own number, and — where there is work — how much of it is waiting. */
+/* Where there is work waiting in a step, how much. The steps are in order on the screen, so
+   numbering them as well would say the same thing twice. */
 .stepn {
-  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sky);
-  min-width: 15px; text-align: center;
+  font-size: 11px; font-variant-numeric: tabular-nums; text-align: center;
+  background: rgba(255, 255, 255, 0.16); border-radius: 999px; padding: 1px 7px; color: #fff;
 }
-.stepn.n { background: rgba(255, 255, 255, 0.16); border-radius: 999px; padding: 1px 6px; color: #fff; }
 .userbox {
   display: flex; align-items: center; gap: 10px;
   padding: 10px; border-top: 1px solid rgba(255, 255, 255, 0.16); margin-top: 8px;

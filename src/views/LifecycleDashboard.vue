@@ -2,7 +2,7 @@
 import { computed, onMounted } from 'vue'
 
 import StatusPill from '../components/StatusPill.vue'
-import { STAGES, stageMeta, useLifecycleStore } from '../stores/lifecycle'
+import { STAGES, stageLabel, useLifecycleStore } from '../stores/lifecycle'
 
 const lc = useLifecycleStore()
 onMounted(() => {
@@ -119,13 +119,15 @@ const stageRows = computed(() =>
                 <router-link :to="`/engagements/${e.engagement_id}`" class="ename">{{ e.name }}</router-link>
               </td>
               <td class="muted">{{ e.client_name }}</td>
-              <td class="muted">{{ stageMeta(e.stage).label }}</td>
+              <td class="muted">{{ stageLabel(e.stage) }}</td>
               <td><StatusPill v-if="e.status" :status="e.status" /></td>
               <td class="r" :class="{ stale: daysIn(e.created_at) > 14 }">{{ daysIn(e.created_at) }}d</td>
             </tr>
             <tr v-if="!waiting.length">
               <td colspan="5" class="muted" style="padding: 18px">
-                {{ lc.loaded ? 'Nothing in flight — every contract has gone live.' : 'Loading…' }}
+                <template v-if="lc.err">Nothing could be loaded.</template>
+                <template v-else-if="!lc.loaded">Loading…</template>
+                <template v-else>Nothing in flight — every contract has gone live.</template>
               </td>
             </tr>
           </tbody>

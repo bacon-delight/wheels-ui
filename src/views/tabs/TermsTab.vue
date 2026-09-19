@@ -235,7 +235,6 @@ onMounted(() => {
             >{{ eng.busy === `remove-${d.document_id}` ? 'Removing…' : 'Remove' }}</button>
           </div>
         </div>
-        <p v-if="!eng.currentDocs.length" class="muted small" style="padding: 8px 0">No agreements uploaded yet.</p>
       </div>
 
       <!-- Earlier agreements are kept for the record and feed neither terms nor extraction.
@@ -605,7 +604,6 @@ onMounted(() => {
 .small { font-size: 12px; }
 .docs { display: grid; gap: 10px; }
 .pickdoc { width: auto; min-width: 220px; height: 34px; padding: 0 10px; font-size: 12.5px; }
-.btn-link.disabled { opacity: 0.5; pointer-events: none; }
 .revised { margin: 10px 0 0; padding: 9px 12px; border-radius: 10px; background: var(--accent-weak); color: var(--accent-ink); font-size: 12.5px; }
 .doc { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .dinfo { min-width: 0; }
@@ -614,8 +612,6 @@ onMounted(() => {
 .fill { height: 100%; background: var(--accent); transition: width 0.3s; }
 .fill.done { background: var(--ok); }
 .okc { color: var(--ok); font-weight: 600; }
-.btn-link { border: 1px solid var(--line-strong); background: var(--panel); padding: 8px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; }
-.btn-link:hover { border-color: var(--muted); text-decoration: none; }
 .req { background: var(--warn-weak); color: var(--warn); border-radius: 10px; padding: 12px 14px; font-style: italic; }
 .response { border-left: 3px solid var(--accent); background: var(--accent-weak, #e3ecf9); }
 .rhead { font-weight: 600; color: var(--accent-ink); margin-bottom: 8px; }

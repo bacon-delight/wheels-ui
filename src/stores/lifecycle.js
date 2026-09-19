@@ -44,8 +44,9 @@ export const STAGES = [
   },
 ]
 
-// Active is a destination, not a step somebody works: it gets a row on the board but no
-// sidebar entry, because nobody goes looking for "what has already finished".
+// Active is a destination rather than a step somebody works, but it is still where most of
+// the book lives, and leaving it out of the board and the menu meant the only way to a list of
+// live engagements was to type the URL.
 export const ACTIVE_STAGE = {
   key: 'ACTIVE',
   label: 'Active',
@@ -54,7 +55,10 @@ export const ACTIVE_STAGE = {
 }
 
 export const ALL_STAGES = [...STAGES, ACTIVE_STAGE]
-export const stageMeta = (key) => ALL_STAGES.find((s) => s.key === key) || ACTIVE_STAGE
+// Null for a key we do not know, deliberately. Falling back to Active made a mistyped URL
+// render a confident, wrong page: "Signed, billing and running", over nothing.
+export const stageMeta = (key) => ALL_STAGES.find((s) => s.key === key) || null
+export const stageLabel = (key) => stageMeta(key)?.label || 'Unknown step'
 
 export const useLifecycleStore = defineStore('lifecycle', {
   state: () => ({

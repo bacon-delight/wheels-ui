@@ -140,7 +140,9 @@ const unplaced = (t) =>
             </td>
 
             <td v-if="category === 'misc'" class="kind">{{ MISC_KIND[t.info_type] || t.info_type }}</td>
-            <td v-else class="freq">{{ t.record?.frequency || '—' }}</td>
+            <td v-else class="freq">
+              <span class="clamp2" :title="t.record?.frequency || ''">{{ t.record?.frequency || '—' }}</span>
+            </td>
 
             <td v-if="category === 'pricing'" class="col-num">
               <template v-if="t.amount != null">{{ money(t.amount) }}</template>
@@ -258,6 +260,9 @@ const unplaced = (t) =>
 .col-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .col-state { width: 1%; white-space: nowrap; text-align: right; }
 .freq, .kind { color: var(--ink-soft); font-size: 12.5px; }
+/* Some frequencies are a whole clause. Two lines here, the rest on hover and in the detail —
+   one long cell must not cost eight rows of the scan it exists to support. */
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .none { color: var(--muted); }
 .incl { color: var(--ok); font-size: 12px; }
 .empty { padding: 22px 14px; }

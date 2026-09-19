@@ -38,6 +38,64 @@ const canApprove = computed(() => auth.isProvider)
 const tabs = computed(() =>
   CATEGORIES.map((c) => ({ ...c, count: counts.value[c.key] || 0 })),
 )
+// How the screen is divided, as a percentage given to the contract pane. The terms are the
+// work and the contract is the evidence, so the terms get the larger half by default — the
+// reverse of what this started as. It is a preference, not a rule, so it is draggable and
+// remembered per person.
+const SPLIT_KEY = 'wheels.review.split'
+const SPLIT_DEFAULT = 42
+const SPLIT_MIN = 22
+const SPLIT_MAX = 72
+
+function readSplit() {
+  try {
+    const saved = Number(localStorage.getItem(SPLIT_KEY))
+    if (Number.isFinite(saved) && saved >= SPLIT_MIN && saved <= SPLIT_MAX) return saved
+  } catch {
+    /* private browsing and blocked storage both land here; the default is fine */
+  }
+  return SPLIT_DEFAULT
+}
+const split = ref(readSplit())
+const dragging = ref(false)
+const splitEl = ref(null)
+
+function persistSplit() {
+  try {
+    localStorage.setItem(SPLIT_KEY, String(Math.round(split.value)))
+  } catch {
+    /* a preference that cannot be saved is still a preference for this session */
+  }
+}
+const clamp = (n) => Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, n))
+
+function onDragMove(e) {
+  if (!splitEl.value) return
+  const box = splitEl.value.getBoundingClientRect()
+  split.value = clamp(((e.clientX - box.left) / box.width) * 100)
+}
+function endDrag() {
+  dragging.value = false
+  persistSplit()
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', endDrag)
+}
+function startDrag(e) {
+  e.preventDefault()
+  dragging.value = true
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', endDrag)
+}
+// The handle is a real separator, so it can be moved without a pointer.
+function nudge(by) {
+  split.value = clamp(split.value + by)
+  persistSplit()
+}
+function resetSplit() {
+  split.value = SPLIT_DEFAULT
+  persistSplit()
+}
+
 const query = ref('')
 // Search reads the whole record, not just the headline. An analyst looking for "$15" or
 // "per card" or a program name is as likely to be after a value or a frequency as a title,
@@ -255,7 +313,7 @@ onMounted(() => {
 
     <p v-if="err" class="err">{{ err }}</p>
 
-    <div class="split">
+    <div class="split" :class="{ dragging }" :style="{ '--pdf-w': split + '%' }" ref="splitEl">
       <div class="doc-pane">
         <div v-for="p in pages" :key="p.page" class="page-wrap" :ref="(el) => (pageEls[p.page] = el)">
           <img :src="p.image_url" :alt="`page ${p.page}`" loading="lazy" />
@@ -267,6 +325,23 @@ onMounted(() => {
           This document hasn't been processed yet — upload it and run extraction first.
         </p>
       </div>
+
+      <div
+        class="handle"
+        role="separator"
+        tabindex="0"
+        aria-orientation="vertical"
+        aria-label="Resize the contract and terms panes"
+        :aria-valuenow="Math.round(split)"
+        :aria-valuemin="SPLIT_MIN"
+        :aria-valuemax="SPLIT_MAX"
+        title="Drag to resize · double-click to reset"
+        @pointerdown="startDrag"
+        @dblclick="resetSplit"
+        @keydown.left.prevent="nudge(-2)"
+        @keydown.right.prevent="nudge(2)"
+        @keydown.home.prevent="resetSplit"
+      ><span class="grip" aria-hidden="true" /></div>
 
       <div class="terms-pane">
         <div class="tabs" role="tablist" aria-label="Term categories">
@@ -414,7 +489,24 @@ onMounted(() => {
 .rhead { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; border-bottom: 1px solid var(--line); background: #fff; gap: 12px; }
 .err { color: var(--risk); padding: 8px 20px; }
 .small { font-size: 12px; }
-.split { flex: 1; display: grid; grid-template-columns: 1.2fr 1fr; min-height: 0; }
+.split { flex: 1; display: grid; grid-template-columns: var(--pdf-w, 42%) 7px 1fr; min-height: 0; }
+/* While dragging, nothing under the pointer should select or swallow the move. */
+.split.dragging { cursor: col-resize; user-select: none; }
+.split.dragging .doc-pane, .split.dragging .terms-pane { pointer-events: none; }
+.handle {
+  position: relative; cursor: col-resize; background: var(--line);
+  border: 0; padding: 0; border-radius: 0;
+  transition: background 0.12s ease;
+}
+.handle:hover, .handle:focus-visible, .split.dragging .handle { background: var(--accent); outline: none; }
+/* A wider invisible target than the visible rule, so the grab does not demand precision. */
+.handle::before { content: ''; position: absolute; inset: 0 -5px; }
+.grip {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 3px; height: 34px; border-radius: 999px; background: var(--panel);
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.handle:hover .grip, .handle:focus-visible .grip, .split.dragging .grip { opacity: 0.9; }
 .doc-pane { overflow-y: auto; background: #dfe6f0; padding: 16px; }
 .page-wrap { position: relative; max-width: 720px; margin: 0 auto 16px; box-shadow: var(--shadow); background: #fff; }
 .page-wrap img { display: block; width: 100%; }
@@ -495,5 +587,8 @@ onMounted(() => {
 .crhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
 .crbody { font-size: 13px; line-height: 1.6; }
 .crnote { color: var(--ink-soft); margin-top: 4px; }
-@media (max-width: 820px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .split { grid-template-columns: 1fr; }
+  .handle { display: none; }
+}
 </style>

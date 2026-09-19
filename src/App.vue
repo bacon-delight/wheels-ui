@@ -26,6 +26,11 @@ const navActive = computed(() => {
 // question, and an extra click to see the answer is an extra click every time.
 const lifecycle = useLifecycleStore()
 const openLifecycle = computed(() => navActive.value === 'lifecycle')
+// Which step is being looked at, or '' for the board of all five. Both are selections, and a
+// sidebar that marks neither leaves you guessing which page you are on.
+const openStep = computed(() =>
+  openLifecycle.value ? String(route.params.stage || '').toLowerCase() : null,
+)
 watch(
   () => [auth.isProvider, openLifecycle.value],
   ([isProvider, open]) => {
@@ -62,12 +67,18 @@ const initials = computed(() =>
         <!-- Expanded only while you are in it: five permanent sub-items would crowd out
              everything else in the sidebar for the sake of a page nobody is on. -->
         <div v-if="auth.isProvider && openLifecycle" class="substeps">
+          <!-- The board is one of the choices, not the absence of one. -->
+          <router-link to="/lifecycle" class="substep" :class="{ active: !openStep }">
+            <span class="stepn">·</span>
+            <span class="steplabel">All steps</span>
+            <span v-if="lifecycle.inFlight.length" class="stepn n">{{ lifecycle.inFlight.length }}</span>
+          </router-link>
           <router-link
             v-for="(s, i) in STAGES"
             :key="s.key"
             :to="`/lifecycle/${s.key.toLowerCase()}`"
             class="substep"
-            :class="{ active: route.params.stage === s.key.toLowerCase() }"
+            :class="{ active: openStep === s.key.toLowerCase() }"
           >
             <span class="stepn">{{ i + 1 }}</span>
             <span class="steplabel">{{ s.label }}</span>
@@ -139,7 +150,15 @@ const initials = computed(() =>
   color: var(--sky-weak); font-size: 13px; text-decoration: none;
 }
 .substep:hover { background: rgba(255, 255, 255, 0.08); text-decoration: none; }
+/* The rule above it draws the branch; the selected step claims a piece of it, so which one
+   you are on is legible without reading the labels. */
+.substep { position: relative; }
 .substep.active { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
+.substep.active::before {
+  content: ''; position: absolute; left: -15px; top: 6px; bottom: 6px;
+  width: 2px; border-radius: 999px; background: var(--sky);
+}
+.substep.active .stepn { color: #fff; }
 .steplabel { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The step's own number, and — where there is work — how much of it is waiting. */
 .stepn {

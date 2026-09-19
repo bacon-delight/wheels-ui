@@ -87,7 +87,7 @@ function open(e) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="e in rows" :key="e.engagement_id" class="row" @click="open(e)">
+            <tr v-for="e in rows" :key="e.engagement_id" class="erow" @click="open(e)">
               <td><span class="ename">{{ e.name }}</span></td>
               <td class="muted">{{ e.client_name }}</td>
               <td v-if="!stageKey" class="muted">{{ stageMeta(e.stage).label }}</td>
@@ -147,8 +147,10 @@ function open(e) {
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 11px 16px; border-top: 1px solid var(--line); font-size: 14px; }
 th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; border-top: none; }
-.row { cursor: pointer; }
-.row:hover { background: var(--panel-2); }
+/* Not `.row`: that is a global flex utility, and a table row given `display: flex` stops
+   sharing columns with the rows above it. */
+.erow { cursor: pointer; }
+.erow:hover { background: var(--panel-2); }
 .ename { font-weight: 600; color: var(--accent-ink); }
 .r { text-align: right; font-variant-numeric: tabular-nums; }
 .stale { color: var(--warn); font-weight: 600; }

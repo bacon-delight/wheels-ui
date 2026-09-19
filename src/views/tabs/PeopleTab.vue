@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import Dialog from '../../components/Dialog.vue'
 import { useEngagementStore } from '../../stores/engagement'
@@ -23,6 +23,9 @@ const elsewhere = computed(() =>
   chosen.value && !chosen.value.same_customer ? chosen.value.customers[0] || '' : '',
 )
 const looksLikeEmail = computed(() => /^\S+@\S+\.\S+$/.test(q.value.trim()))
+// One condition for both ways in. The button reads `chosen`, not the raw id, so it can never
+// offer to act on a selection whose row has left the list.
+const cannotSubmit = computed(() => (!email.value && !chosen.value) || !!eng.busy)
 
 // Searching is the server's job — accounts exist that this engagement has never seen — so the
 // query is debounced rather than filtered in place. A new query drops the selection with it:
@@ -38,13 +41,20 @@ watch(q, (needle) => {
 // The two halves of the dialog are one choice, so each clears the other: picking someone
 // empties the new-person fields, and typing a name or email drops the pick. Without that the
 // footer button would have to guess which of the two the person meant.
-watch(showInvite, (open) => {
+watch(showInvite, async (open) => {
   if (!open) return
   picked.value = ''
   q.value = ''
   email.value = ''
   name.value = ''
   eng.err = ''
+  // Not in-flight staleness — a previous search, or another engagement's contacts entirely.
+  eng.candidates = []
+  eng.candTotal = 0
+  // Clearing the query above queued the search watcher; this open owns the load, so the
+  // debounce it scheduled is dropped rather than repeating the same request 220ms later.
+  await nextTick()
+  clearTimeout(timer)
   eng.loadCandidates()
 })
 watch([email, name], ([e, n]) => {
@@ -62,6 +72,8 @@ function useTyped() {
   picked.value = ''
 }
 
+onBeforeUnmount(() => clearTimeout(timer))
+
 const initial = (c) => ((c.name || c.email)[0] || '?').toUpperCase()
 // Where someone is already known, in one line: their customer first when it is not this one.
 function whereabouts(c) {
@@ -71,15 +83,13 @@ function whereabouts(c) {
 }
 
 async function submit() {
+  // Enter in the email field reaches here too, so the guard lives here rather than only on
+  // the button — an empty address would otherwise travel all the way to Cognito.
+  if (cannotSubmit.value) return
   const who = chosen.value
-  // Belt and braces: never act on a selection the list no longer shows.
-  if (picked.value && !who) {
-    picked.value = ''
-    return
-  }
   const typed = email.value
-  const outcome = picked.value
-    ? await eng.addMember(picked.value, q.value.trim())
+  const outcome = who
+    ? await eng.addMember(who.user_id)
     : await eng.invite(email.value, name.value)
   if (eng.err) return
   notice.value =
@@ -165,7 +175,13 @@ async function submit() {
       <!-- Rows from the last answer stay put while the next one is in flight, dimmed and
            unclickable, so the list neither flickers on every keystroke nor pretends the
            people it is showing are the answer to the query above them. -->
-      <div v-if="eng.candidates.length" class="plist" :class="{ 'is-stale': eng.searching }">
+      <div
+        v-if="eng.candidates.length"
+        class="plist"
+        :class="{ 'is-stale': eng.searching }"
+        :inert="eng.searching"
+        :aria-busy="eng.searching"
+      >
         <button
           v-for="c in eng.candidates"
           :key="c.user_id"
@@ -226,9 +242,9 @@ async function submit() {
       <template #footer>
         <span class="sp" />
         <button class="ghost" @click="showInvite = false">Cancel</button>
-        <button class="primary" :disabled="(!email && !picked) || !!eng.busy" @click="submit">
+        <button class="primary" :disabled="cannotSubmit" @click="submit">
           <template v-if="eng.busy === 'invite'">Working…</template>
-          <template v-else-if="picked">Give access</template>
+          <template v-else-if="chosen">Give access</template>
           <template v-else>Send invitation</template>
         </button>
       </template>
@@ -287,7 +303,10 @@ async function submit() {
 
 .caption { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 6px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 .caption .more { margin-left: auto; font-weight: 500; letter-spacing: 0.03em; text-transform: none; font-size: 11px; }
-.plist { display: grid; gap: 2px; max-height: 214px; overflow-y: auto; transition: opacity 0.12s ease; }
+/* The track is capped at the list's own width. Without minmax(0, …) an implicit grid track is
+   sized to its widest content, so one long unbroken address stretched the row past the visible
+   box and the selected row's highlight, border and radius were cut off at the edge. */
+.plist { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; max-height: 214px; overflow-y: auto; transition: opacity 0.12s ease; }
 .plist.is-stale { opacity: 0.4; pointer-events: none; }
 .empty { margin: 0; padding: 4px 2px 2px; line-height: 1.55; }
 /* A row is the control, not a label beside one: the whole line is the hit target, and the
@@ -300,8 +319,8 @@ async function submit() {
 .prow:hover { background: var(--panel-2); }
 .prow.is-sel { background: var(--accent-weak); border-color: var(--accent); }
 .pinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.pname, .pinfo .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pname { font-weight: 600; }
-.pinfo .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tick { color: var(--accent); font-weight: 700; opacity: 0; flex-shrink: 0; }
 .prow.is-sel .tick { opacity: 1; }
 .crosscust {

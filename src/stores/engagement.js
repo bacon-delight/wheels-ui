@@ -422,13 +422,13 @@ export const useEngagementStore = defineStore('engagement', {
         if (seq === this.candSeq) this.searching = false
       }
     },
-    async addMember(userId, q = '') {
+    async addMember(userId) {
       this.busy = 'invite'
       this.err = ''
       try {
         await api.post(`/engagements/${this.eid}/members`, { user_id: userId })
+        // No candidate refetch: the dialog closes on success, and the next open asks again.
         await this.load(this.eid)
-        await this.loadCandidates(q)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       } finally {

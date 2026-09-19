@@ -195,7 +195,7 @@ onMounted(() => {
           v-else-if="eng.canOpenAmendment"
           class="primary nowrap"
           :disabled="!!eng.busy"
-          @click="showAmend = true"
+          @click="eng.err = ''; showAmend = true"
         >＋ Amend agreements</button>
       </div>
 

@@ -24,15 +24,22 @@ const rows = computed(() => {
   return stageKey.value ? lc.inStage(stageKey.value) : lc.inFlight
 })
 
-const age = (iso) => {
+// How long it has stood where it stands — measured from when the status last changed, not
+// from when the deal was created. An engagement opened a year ago and signed yesterday has
+// been waiting a day, and reading 365 sent you chasing the wrong thing.
+const since = (e) => e.status_since || e.created_at
+const age = (e) => {
+  const iso = since(e)
   if (!iso) return '—'
   const days = Math.floor((Date.now() - new Date(iso)) / 86400000)
   if (days < 1) return 'today'
   return days === 1 ? '1 day' : `${days} days`
 }
-// How long something has been sitting is the question a board like this is for — an engagement
-// three weeks into Review is the one worth chasing.
-const stale = (iso) => iso && Date.now() - new Date(iso) > 14 * 86400000
+// Nothing in Active is waiting on anyone, so nothing there goes amber. Elsewhere, an
+// engagement three weeks into Review is the one worth chasing.
+const ACTIVE = 'ACTIVE'
+const stale = (e) =>
+  e.stage !== ACTIVE && since(e) && Date.now() - new Date(since(e)) > 14 * 86400000
 
 onMounted(() => {
   if (!lc.loaded) lc.load()
@@ -89,7 +96,7 @@ function open(e) {
               <th v-if="!stageKey">Step</th>
               <th>Status</th>
               <th>Scope</th>
-              <th class="r">Waiting</th>
+              <th class="r">{{ stageKey === 'ACTIVE' ? 'Live for' : 'Waiting' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -99,7 +106,7 @@ function open(e) {
               <td v-if="!stageKey" class="muted">{{ stageLabel(e.stage) }}</td>
               <td><StatusPill v-if="e.status" :status="e.status" /></td>
               <td class="muted">{{ SCOPE_LABELS[e.scope] || 'Pending upload' }}</td>
-              <td class="r" :class="{ stale: stale(e.created_at) }">{{ age(e.created_at) }}</td>
+              <td class="r" :class="{ stale: stale(e) }">{{ age(e) }}</td>
             </tr>
             <tr v-if="!rows.length">
               <td :colspan="stageKey ? 5 : 6" class="muted empty-row">

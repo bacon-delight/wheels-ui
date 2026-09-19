@@ -13,7 +13,12 @@ const total = computed(() => lc.engagements.length)
 const active = computed(() => lc.countFor('ACTIVE'))
 const inFlight = computed(() => lc.inFlight.length)
 
-const daysIn = (iso) => (iso ? Math.floor((Date.now() - new Date(iso)) / 86400000) : 0)
+// Time in the current step, not age of the deal: `created_at` counts from the handshake and
+// would call a contract signed yesterday a year overdue.
+const daysIn = (e) => {
+  const iso = e.status_since || e.created_at
+  return iso ? Math.floor((Date.now() - new Date(iso)) / 86400000) : 0
+}
 
 // The widest bar sets the scale, so the shape of the pipeline is readable even when the
 // biggest step holds three engagements.
@@ -23,7 +28,7 @@ const peak = computed(() => Math.max(1, ...STAGES.map((s) => lc.countFor(s.key))
 // the pipeline is fine; this says which deal has been sitting for three weeks.
 const waiting = computed(() =>
   [...lc.inFlight]
-    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .sort((a, b) => daysIn(b) - daysIn(a))
     .slice(0, 8),
 )
 
@@ -36,7 +41,7 @@ const stageRows = computed(() =>
     ...s,
     count: lc.countFor(s.key),
     share: Math.round((100 * lc.countFor(s.key)) / peak.value),
-    oldest: Math.max(0, ...lc.inStage(s.key).map((e) => daysIn(e.created_at))),
+    oldest: Math.max(0, ...lc.inStage(s.key).map(daysIn)),
   })),
 )
 </script>
@@ -106,7 +111,7 @@ const stageRows = computed(() =>
         <router-link to="/lifecycle" class="btn-link small">Open the board →</router-link>
       </div>
       <p class="muted small" style="margin: 6px 0 12px">
-        The contracts that have been in flight the longest. Oldest first.
+        The contracts that have stood longest in the step they are in. Longest first.
       </p>
       <div class="twrap">
         <table>
@@ -121,7 +126,7 @@ const stageRows = computed(() =>
               <td class="muted">{{ e.client_name }}</td>
               <td class="muted">{{ stageLabel(e.stage) }}</td>
               <td><StatusPill v-if="e.status" :status="e.status" /></td>
-              <td class="r" :class="{ stale: daysIn(e.created_at) > 14 }">{{ daysIn(e.created_at) }}d</td>
+              <td class="r" :class="{ stale: daysIn(e) > 14 }">{{ daysIn(e) }}d</td>
             </tr>
             <tr v-if="!waiting.length">
               <td colspan="5" class="muted" style="padding: 18px">

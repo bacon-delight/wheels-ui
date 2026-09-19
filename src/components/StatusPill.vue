@@ -8,20 +8,18 @@ const LABELS = {
   CHANGES_REQUESTED_CLIENT: 'Customer requested changes',
   REVALIDATING: 'Re-validating',
   VALIDATION_FAILED: 'Validation failed',
-  CLIENT_APPROVED: 'Customer approved',
-  PENDING_FINANCE_APPROVAL: 'Awaiting finance',
-  CHANGES_REQUESTED_FINANCE: 'Finance requested changes',
-  FINANCE_APPROVED: 'Finance approved',
+  CLIENT_APPROVED: 'Customer signed',
   BILLING_SETUP: 'Setting up billing…',
-  ACTIVE: 'Active — billing configured',
+  PENDING_BILLING_AUDIT: 'Awaiting billing audit',
+  CHANGES_REQUESTED_AUDIT: 'Audit requested changes',
+  ACTIVE: 'Active — billing',
 }
 const CLASS = {
   ACTIVE: 'ok',
   CLIENT_APPROVED: 'ok',
-  FINANCE_APPROVED: 'ok',
   VALIDATION_FAILED: 'risk',
   CHANGES_REQUESTED_CLIENT: 'warn',
-  CHANGES_REQUESTED_FINANCE: 'warn',
+  CHANGES_REQUESTED_AUDIT: 'warn',
 }
 </script>
 

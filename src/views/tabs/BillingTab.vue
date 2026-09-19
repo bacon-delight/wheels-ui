@@ -44,7 +44,12 @@ const outsideEstimate = computed(() => {
     count,
   }))
 })
-const active = computed(() => ['BILLING_SETUP', 'ACTIVE'].includes(eng.status))
+// Billing exists from the moment it is generated, which is before it is audited — so the
+// audit itself has something to read, and so this page shows what is about to bill rather
+// than an empty panel.
+const GENERATED = ['BILLING_SETUP', 'PENDING_BILLING_AUDIT', 'CHANGES_REQUESTED_AUDIT', 'ACTIVE']
+const active = computed(() => GENERATED.includes(eng.status))
+const awaitingAudit = computed(() => eng.status === 'PENDING_BILLING_AUDIT')
 const schedule = computed(() => billing.value?.schedule || [])
 const summary = computed(() => billing.value?.summary || {})
 const FREQ = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annual' }
@@ -88,28 +93,28 @@ async function remind(row) {
 }
 
 const estMonthly = computed(() => estimateMonthly(config.value?.service_lines, fleet.value))
-
-async function setupBilling() {
-  await eng.action('setup-billing')
-  await loadBilling()
-}
 </script>
 
 <template>
   <div class="stack">
-    <!-- Provider: run setup -->
-    <div v-if="eng.isProvider && eng.status === 'FINANCE_APPROVED'" class="card pad">
-      <h2>Set up billing</h2>
-      <p class="muted">
-        Generate the billing configuration automatically from the approved terms — no manual keying.
-      </p>
-      <button class="primary" :disabled="!!eng.busy" @click="setupBilling">
-        {{ eng.busy === 'setup-billing' ? 'Generating…' : 'Generate billing configuration' }}
-      </button>
+    <!-- Generated, not yet audited: the figures below are what the audit is checking. -->
+    <div v-if="eng.isProvider && awaitingAudit" class="card pad audit">
+      <div class="spread" style="align-items: flex-start">
+        <div>
+          <h2 style="margin: 0">Waiting on the billing audit</h2>
+          <p class="muted small" style="margin: 6px 0 0; max-width: 60ch">
+            Generated from the signed terms. Nothing bills until somebody has checked what makes
+            up an invoice against the contract it came from.
+          </p>
+        </div>
+        <router-link class="auditlink nowrap" :to="`/engagements/${route.params.eid}/billing-audit`">
+          Open the billing audit →
+        </router-link>
+      </div>
     </div>
 
     <!-- Not configured yet -->
-    <div v-else-if="!active" class="card pad">
+    <div v-if="!active" class="card pad">
       <h2>Billing</h2>
       <p class="muted" style="margin: 0">
         Billing will be configured once the terms are fully approved. Nothing to show yet.
@@ -124,9 +129,14 @@ async function setupBilling() {
             <div class="label">Estimated monthly recurring</div>
             <div class="big">{{ money(estMonthly) }}<span class="muted per">/mo</span></div>
             <div v-if="active && months > 1" class="billed">Billed {{ BILLED[billing.frequency] }} · <strong>{{ money(perInstallment) }}</strong> per installment ({{ months }} × monthly)</div>
-            <div class="muted small">Recurring per-vehicle fees for a fleet of {{ fleet }} vehicles. Usage &amp; pass-through charges bill separately.</div>
+            <!-- The fleet size is set on Vehicles; naming it here as the multiplier is what
+                 makes this figure legible, and a second copy of the number is not. -->
+            <div class="muted small">
+              Recurring per-vehicle fees across
+              <router-link :to="`/engagements/${route.params.eid}/vehicles`">{{ fleet }} vehicles</router-link>.
+              Usage &amp; pass-through charges bill separately.
+            </div>
           </div>
-          <div class="fleet"><span class="label">Fleet size</span><div class="fleetval">{{ fleet }}</div></div>
         </div>
       </div>
 
@@ -223,13 +233,17 @@ async function setupBilling() {
 
 <style scoped>
 .pad { padding: 20px 22px; }
+.audit { border-left: 3px solid var(--accent); }
+.auditlink {
+  display: inline-block; padding: 9px 16px; border-radius: 10px; font-weight: 600;
+  background: var(--accent); color: #fff; text-decoration: none;
+}
+.auditlink:hover { text-decoration: none; filter: brightness(1.06); }
 .small { font-size: 12px; }
 .est { border-left: 3px solid var(--accent); }
 .big { font-family: var(--serif); font-size: 32px; font-weight: 600; margin: 4px 0; }
 .per { font-size: 16px; font-family: var(--sans); margin-left: 4px; }
 .billed { font-size: 13px; color: var(--accent-ink); margin: 2px 0 6px; }
-.fleet { display: flex; flex-direction: column; gap: 6px; width: 120px; }
-.fleetval { font-family: var(--serif); font-size: 22px; font-weight: 600; padding: 4px 0; }
 .line { padding: 10px 0; border-bottom: 1px solid var(--line); }
 .line:last-child { border-bottom: none; }
 .fees { margin: 4px 0 0; padding-left: 18px; }

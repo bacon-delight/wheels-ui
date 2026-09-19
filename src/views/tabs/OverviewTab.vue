@@ -22,10 +22,11 @@ const ACTION_LABEL = {
   sanity_pass: 'Sanity checks passed',
   sanity_fail: 'Sanity checks failed',
   capture_fields: 'Terms captured',
-  finance_approve: 'Finance approved',
-  finance_request_changes: 'Finance requested changes',
-  setup_billing: 'Billing setup started',
-  billing_done: 'Billing configured',
+  resubmit_to_client: 'Terms resubmitted to the customer',
+  billing_ready: 'Billing generated',
+  approve_billing: 'Billing audit approved',
+  audit_request_changes: 'Billing audit requested changes',
+  reopen: 'Sent back for changes',
   field_approved: 'Term approved',
   field_corrected: 'Term corrected',
   user_invited: 'User invited',
@@ -79,20 +80,19 @@ const LABELS = {
   DRAFT: 'Draft', EXTRACTING: 'Extracting terms', IN_UNDERWRITING: 'In underwriting review',
   PENDING_CLIENT_APPROVAL: 'Awaiting customer approval', CHANGES_REQUESTED_CLIENT: 'Customer requested changes',
   REVALIDATING: 'Re-validating', VALIDATION_FAILED: 'Validation failed', CLIENT_APPROVED: 'Customer approved',
-  PENDING_FINANCE_APPROVAL: 'Awaiting finance', CHANGES_REQUESTED_FINANCE: 'Finance requested changes',
-  FINANCE_APPROVED: 'Finance approved', BILLING_SETUP: 'Setting up billing', ACTIVE: 'Active',
+  BILLING_SETUP: 'Setting up billing', PENDING_BILLING_AUDIT: 'Awaiting billing audit',
+  CHANGES_REQUESTED_AUDIT: 'Billing audit requested changes', ACTIVE: 'Active',
 }
 // What a customer is told the engagement is doing. The internal stages are one thing to
-// them — Wheels is working on it — and naming underwriting or finance validation invites
+// them — Wheels is working on it — and naming underwriting or the billing audit invites
 // questions about a process they are not part of.
 const CUSTOMER_LABELS = {
   DRAFT: 'Being prepared', EXTRACTING: 'Being prepared', REVALIDATING: 'Being prepared',
   IN_UNDERWRITING: 'Being prepared', VALIDATION_FAILED: 'Being prepared',
   PENDING_CLIENT_APPROVAL: 'Ready for your review',
   CHANGES_REQUESTED_CLIENT: 'Your changes are being made',
-  CLIENT_APPROVED: 'Being finalised', PENDING_FINANCE_APPROVAL: 'Being finalised',
-  CHANGES_REQUESTED_FINANCE: 'Being finalised', FINANCE_APPROVED: 'Being finalised',
-  BILLING_SETUP: 'Being finalised',
+  CLIENT_APPROVED: 'Being finalised', BILLING_SETUP: 'Being finalised',
+  PENDING_BILLING_AUDIT: 'Being finalised', CHANGES_REQUESTED_AUDIT: 'Being finalised',
   ACTIVE: 'Active',
 }
 const cycleStatus = computed(() =>
@@ -123,22 +123,40 @@ const expiry = computed(() => {
 })
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 
+const TERMS_TAB = { name: 'eng-terms' }
 const nextHint = computed(() => {
   const s = eng.status
+  const terms = (text) => ({ text, to: TERMS_TAB, cta: 'Go to Terms →' })
   if (eng.isProvider) {
     if (s === 'DRAFT') {
       // Which agreements apply comes from the engagement's scope, not a fixed pair.
       const missing = eng.missingDocTypes
-      if (missing.length) return `Upload the ${missing.join(' and ')} and run extraction.`
-      return 'Run extraction on the uploaded agreements.'
+      return terms(
+        missing.length
+          ? `Upload the ${missing.join(' and ')} and run extraction.`
+          : 'Run extraction on the uploaded agreements.',
+      )
     }
-    if (s === 'IN_UNDERWRITING') return 'Review and approve the extracted terms, then submit to the customer.'
-    if (s === 'PENDING_FINANCE_APPROVAL') return 'Validate the customer-approved terms as finance.'
-    if (s === 'FINANCE_APPROVED') return 'Generate the billing configuration.'
-    if (s === 'PENDING_CLIENT_APPROVAL') return 'Waiting on the customer to approve the terms.'
+    if (s === 'IN_UNDERWRITING')
+      return terms('Review and approve the extracted terms, then submit to the customer.')
+    if (s === 'PENDING_CLIENT_APPROVAL')
+      return terms('Waiting on the customer to sign the terms.')
+    if (s === 'CHANGES_REQUESTED_CLIENT')
+      return terms('The customer asked for changes. Re-upload the agreement or respond.')
+    if (s === 'BILLING_SETUP')
+      return terms('The customer has signed. Billing is being generated from the terms.')
+    if (s === 'PENDING_BILLING_AUDIT')
+      return {
+        text: 'Check what makes up an invoice against the contract, then approve it to go live.',
+        to: { name: 'billing-audit' },
+        cta: 'Open the billing audit →',
+      }
+    if (s === 'CHANGES_REQUESTED_AUDIT')
+      return terms('The billing audit sent this back. Correct the terms behind the charges.')
     return null
   }
-  if (s === 'PENDING_CLIENT_APPROVAL') return 'Review the proposed terms and approve, or request changes.'
+  if (s === 'PENDING_CLIENT_APPROVAL')
+    return terms('Review the proposed terms and sign, or request changes.')
   return null
 })
 </script>
@@ -160,7 +178,7 @@ const nextHint = computed(() => {
       <p v-if="eng.liveDuringAmendment" class="muted small" style="margin: -8px 0 16px">
         The engagement is live and billing on the agreed terms. This is the amendment's progress.
       </p>
-      <JourneyStepper :status="eng.status" :for-customer="!eng.isProvider" />
+      <JourneyStepper :stage="eng.stage" :status="eng.status" :for-customer="!eng.isProvider" />
     </div>
 
     <div class="tiles">
@@ -176,8 +194,10 @@ const nextHint = computed(() => {
       <div class="stattile">
         <div class="label">Vehicles</div>
         <div class="val">
-          {{ eng.data.engagement.fleet_size }}
-          <span class="muted" style="font-weight: 400; font-size: 13px">{{ eng.fleetSizeSource === 'override' ? 'set manually' : `${eng.assignedVehicleCount} assigned` }}</span>
+          <router-link :to="{ name: 'eng-vehicles', params: { eid: route.params.eid } }">
+            {{ eng.data.engagement.fleet_size }}
+          </router-link>
+          <span class="muted" style="font-weight: 400; font-size: 13px">billed</span>
         </div>
       </div>
       <div class="stattile" :class="{ warn: expiry && expiry.days <= 90 }">
@@ -210,8 +230,8 @@ const nextHint = computed(() => {
 
     <div v-if="nextHint" class="card pad next">
       <div class="label" style="color: var(--accent-ink)">Next step</div>
-      <p style="margin: 6px 0 12px">{{ nextHint }}</p>
-      <router-link :to="{ name: 'eng-terms', params: { eid: route.params.eid } }" class="golink">Go to Terms →</router-link>
+      <p style="margin: 6px 0 12px">{{ nextHint.text }}</p>
+      <router-link :to="{ ...nextHint.to, params: { eid: route.params.eid } }" class="golink">{{ nextHint.cta }}</router-link>
     </div>
 
     <div class="card pad">

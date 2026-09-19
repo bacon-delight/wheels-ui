@@ -1,48 +1,50 @@
 <script setup>
 import { computed } from 'vue'
 
+import { ALL_STAGES } from '../stores/lifecycle'
+
 const props = defineProps({
+  // Which of the five steps the engagement stands in. The API decides this — it owns the
+  // statuses and the mapping — so the stepper never has to keep a second copy of that table.
+  stage: { type: String, default: '' },
+  // Still needed for the one thing a stage cannot say: whether somebody is being waited on.
   status: { type: String, default: '' },
   // A customer is a party to the contract, not a user of the workflow. How Wheels arrives at
-  // the terms — extraction, underwriting, finance validation — is not their journey, so they
+  // the terms — extraction, underwriting, the billing audit — is not their journey, so they
   // get one drawn from their own vantage point.
   forCustomer: { type: Boolean, default: false },
 })
 
-const PROVIDER_STEPS = [
-  { label: 'Draft', sub: 'Upload agreements' },
-  { label: 'Extraction', sub: 'AI reads terms' },
-  { label: 'Underwriting', sub: 'Analyst review' },
-  { label: 'Customer approval', sub: 'Customer signs off' },
-  { label: 'Finance approval', sub: 'Finance validates' },
-  { label: 'Billing', sub: 'Config generated' },
-]
+const PROVIDER_SUBS = {
+  NEGOTIATIONS: 'Agreed offline',
+  ONBOARDING: 'Agreements read',
+  REVIEW: 'Customer signs',
+  BILLING_SETUP: 'Generated automatically',
+  BILLING_AUDIT: 'Checked before go-live',
+  ACTIVE: 'Billing has started',
+}
+const PROVIDER_STEPS = ALL_STAGES.map((st) => ({ label: st.label, sub: PROVIDER_SUBS[st.key] }))
+const PROVIDER_STEP_OF = Object.fromEntries(ALL_STAGES.map((st, i) => [st.key, i]))
+
 const CUSTOMER_STEPS = [
   { label: 'Preparing', sub: 'Wheels drafts your terms' },
   { label: 'Your review', sub: 'You approve or ask for changes' },
   { label: 'Finalising', sub: 'Wheels completes setup' },
   { label: 'Active', sub: 'Billing has started' },
 ]
-
-const PROVIDER_STEP_OF = {
-  DRAFT: 0,
-  EXTRACTING: 1, REVALIDATING: 1,
-  IN_UNDERWRITING: 2, VALIDATION_FAILED: 2, CHANGES_REQUESTED_FINANCE: 2,
-  PENDING_CLIENT_APPROVAL: 3, CHANGES_REQUESTED_CLIENT: 3,
-  CLIENT_APPROVED: 4, PENDING_FINANCE_APPROVAL: 4,
-  FINANCE_APPROVED: 5, BILLING_SETUP: 5,
-  ACTIVE: 6,
-}
 // Everything before the terms reach the customer is one step to them: Wheels is working on it.
+// Everything after they sign is another: Wheels is finishing up.
 const CUSTOMER_STEP_OF = {
-  DRAFT: 0, EXTRACTING: 0, REVALIDATING: 0, IN_UNDERWRITING: 0, VALIDATION_FAILED: 0,
-  PENDING_CLIENT_APPROVAL: 1, CHANGES_REQUESTED_CLIENT: 1,
-  CLIENT_APPROVED: 2, PENDING_FINANCE_APPROVAL: 2, CHANGES_REQUESTED_FINANCE: 2,
-  FINANCE_APPROVED: 2, BILLING_SETUP: 2,
-  ACTIVE: 4,
+  NEGOTIATIONS: 0, ONBOARDING: 0,
+  REVIEW: 1,
+  BILLING_SETUP: 2, BILLING_AUDIT: 2,
+  ACTIVE: 3,
 }
-// Finance asking for changes is internal, so it is not something a customer is alerted to.
-const PROVIDER_ATTENTION = ['CHANGES_REQUESTED_CLIENT', 'CHANGES_REQUESTED_FINANCE', 'VALIDATION_FAILED']
+// A change asked for in the billing audit is internal, so it is not something a customer is
+// alerted to.
+const PROVIDER_ATTENTION = [
+  'CHANGES_REQUESTED_CLIENT', 'CHANGES_REQUESTED_AUDIT', 'VALIDATION_FAILED',
+]
 const CUSTOMER_ATTENTION = ['CHANGES_REQUESTED_CLIENT']
 
 const STEPS = computed(() => (props.forCustomer ? CUSTOMER_STEPS : PROVIDER_STEPS))
@@ -50,7 +52,7 @@ const ATTENTION = computed(() =>
   props.forCustomer ? CUSTOMER_ATTENTION : PROVIDER_ATTENTION,
 )
 const current = computed(() =>
-  (props.forCustomer ? CUSTOMER_STEP_OF : PROVIDER_STEP_OF)[props.status] ?? 0,
+  (props.forCustomer ? CUSTOMER_STEP_OF : PROVIDER_STEP_OF)[props.stage] ?? 0,
 )
 const attention = computed(() => ATTENTION.value.includes(props.status))
 
@@ -80,7 +82,7 @@ function stateOf(i) {
 
 <style scoped>
 .stepper { display: flex; gap: 0; overflow-x: auto; padding: 6px 2px 2px; }
-.step { position: relative; flex: 1; min-width: 120px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.step { position: relative; flex: 1; min-width: 108px; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .track { position: absolute; top: 15px; right: 50%; width: 100%; height: 2px; background: var(--line-strong); }
 .track.fill { background: var(--accent); }
 .node {

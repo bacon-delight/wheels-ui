@@ -109,6 +109,9 @@ export const useEngagementStore = defineStore('engagement', {
   }),
   getters: {
     submission: (s) => s.data?.submission,
+    // Which of the five lifecycle steps this engagement stands in. The API owns the mapping.
+    stage: (s) => s.data?.stage || 'NEGOTIATIONS',
+    stageLabel: (s) => s.data?.stage_label || 'Negotiations',
     documents: (s) => s.data?.documents || [],
     members: (s) => s.data?.members || [],
     status: (s) => s.data?.submission?.status,
@@ -170,7 +173,7 @@ export const useEngagementStore = defineStore('engagement', {
     canUpload: (s) =>
       s.data?.your_role !== 'client' &&
       ['DRAFT', 'IN_UNDERWRITING', 'VALIDATION_FAILED', 'CHANGES_REQUESTED_CLIENT',
-        'CHANGES_REQUESTED_FINANCE'].includes(s.data?.submission?.status),
+        'CHANGES_REQUESTED_AUDIT'].includes(s.data?.submission?.status),
     // Extracted terms, grouped the way the interface reads them.
     termCounts: (s) => s.data?.term_counts || {},
     coverage: (s) => s.data?.coverage_summary || null,
@@ -206,13 +209,13 @@ export const useEngagementStore = defineStore('engagement', {
     },
     reviewable: (s) =>
       [
-        'IN_UNDERWRITING', 'PENDING_CLIENT_APPROVAL', 'CLIENT_APPROVED',
-        'PENDING_FINANCE_APPROVAL', 'FINANCE_APPROVED', 'BILLING_SETUP', 'ACTIVE',
+        'IN_UNDERWRITING', 'PENDING_CLIENT_APPROVAL', 'CLIENT_APPROVED', 'BILLING_SETUP',
+        'PENDING_BILLING_AUDIT', 'CHANGES_REQUESTED_AUDIT', 'ACTIVE',
       ].includes(s.data?.submission?.status),
     clientMessage() {
       const st = this.data?.submission?.status
-      if (['CLIENT_APPROVED', 'PENDING_FINANCE_APPROVAL', 'FINANCE_APPROVED', 'BILLING_SETUP', 'ACTIVE'].includes(st))
-        return 'You approved these terms — they are being finalized. Nothing more is needed from you.'
+      if (['CLIENT_APPROVED', 'BILLING_SETUP', 'PENDING_BILLING_AUDIT', 'CHANGES_REQUESTED_AUDIT', 'ACTIVE'].includes(st))
+        return 'You signed these terms — they are being finalized. Nothing more is needed from you.'
       if (['CHANGES_REQUESTED_CLIENT', 'REVALIDATING', 'VALIDATION_FAILED'].includes(st))
         return 'Your change request was sent. The provider is updating the agreement and will resubmit.'
       // An amendment is a change to an agreement the customer already has, so saying their

@@ -36,14 +36,26 @@ const routes = [
     component: () => import('../views/VehiclesView.vue'),
     meta: { auth: true, provider: true },
   },
+  // The dashboard answers "where is everything in the lifecycle"; money moved to Finance.
   {
     path: '/dashboard',
     name: 'dashboard',
-    component: () => import('../views/FinanceView.vue'),
+    component: () => import('../views/LifecycleDashboard.vue'),
     meta: { auth: true, provider: true },
   },
-  // Keep the old path working for anyone with it bookmarked.
-  { path: '/finance', redirect: { name: 'dashboard' } },
+  {
+    path: '/finance',
+    name: 'finance',
+    component: () => import('../views/FinanceDashboard.vue'),
+    meta: { auth: true, provider: true },
+  },
+  // One step of the lifecycle, and the engagements standing in it.
+  {
+    path: '/lifecycle/:stage?',
+    name: 'lifecycle',
+    component: () => import('../views/LifecycleView.vue'),
+    meta: { auth: true, provider: true },
+  },
   {
     path: '/users',
     name: 'users',
@@ -69,6 +81,13 @@ const routes = [
       { path: 'vehicles', name: 'eng-vehicles', component: () => import('../views/tabs/VehiclesTab.vue') },
       { path: 'people', name: 'eng-people', component: () => import('../views/tabs/PeopleTab.vue') },
     ],
+  },
+  // The last gate before go-live: the billing beside the contract that produced it.
+  {
+    path: '/engagements/:eid/billing-audit',
+    name: 'billing-audit',
+    component: () => import('../views/BillingAuditView.vue'),
+    meta: { auth: true, provider: true },
   },
   {
     path: '/engagements/:eid/documents/:did/v/:version/review',

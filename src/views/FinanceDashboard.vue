@@ -88,7 +88,7 @@ onMounted(load)
   <div class="page">
     <div class="head spread">
       <div>
-        <h1>Dashboard</h1>
+        <h1>Finance</h1>
         <p class="muted" style="margin: 4px 0 0">Recurring revenue, collections and where the book is concentrated.</p>
       </div>
       <button class="ghost sm" :disabled="loading" @click="load">Refresh</button>
@@ -120,9 +120,9 @@ onMounted(load)
           <div class="num">{{ totals.active_customers }}</div>
           <div class="muted small">{{ totals.customers }} total · {{ usd(totals.avg_per_customer) }} avg/mo</div>
         </div>
-        <div class="tile" :class="{ attn: totals.awaiting_finance > 0 }">
-          <div class="label">Awaiting finance</div>
-          <div class="num">{{ totals.awaiting_finance }}</div>
+        <div class="tile" :class="{ attn: totals.awaiting_audit > 0 }">
+          <div class="label">Awaiting billing audit</div>
+          <div class="num">{{ totals.awaiting_audit }}</div>
           <div class="muted small">{{ usd(totals.pipeline_value) }}/mo in pipeline</div>
         </div>
         <div class="tile">
@@ -377,10 +377,10 @@ onMounted(load)
 .rname:hover { color: var(--accent-ink); }
 .track { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
 .fill { height: 100%; border-radius: 999px; background: #1d5cb0; min-width: 2px; }
-.fill.alt { background: #4a86d4; }
-.fill.active { background: var(--ok); }
-.fill.finance { background: var(--warn); }
-.fill.billing { background: var(--accent-ink); }
+.fill.ACTIVE { background: var(--ok); }
+.fill.BILLING_AUDIT { background: var(--warn); }
+.fill.BILLING_SETUP { background: var(--accent-ink); }
+.fill.REVIEW { background: #4a86d4; }
 
 .agebar { display: flex; gap: 2px; height: 14px; border-radius: 999px; overflow: hidden; margin: 14px 0 12px; background: var(--line); }
 .seg { height: 100%; }

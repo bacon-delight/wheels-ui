@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { useAuthStore } from './stores/auth'
+import { STAGES, useLifecycleStore } from './stores/lifecycle'
 import logo from './assets/wheels-logo.png'
 
 const auth = useAuthStore()
@@ -12,13 +13,26 @@ const bare = computed(() => ['login', 'onboarding'].includes(route.name))
 const navActive = computed(() => {
   const p = route.path
   // New branches go before the catch-all, or every unknown path highlights Engagements.
-  if (p.startsWith('/dashboard') || p.startsWith('/finance')) return 'dashboard'
+  if (p.startsWith('/dashboard')) return 'dashboard'
+  if (p.startsWith('/lifecycle')) return 'lifecycle'
+  if (p.startsWith('/finance')) return 'finance'
   if (p.startsWith('/customers')) return 'customers'
   if (p.startsWith('/services')) return 'services'
   if (p.startsWith('/vehicles')) return 'vehicles'
   if (p.startsWith('/users')) return 'users'
   return 'engagements'
 })
+// The steps hang under Lifecycle rather than behind it: which step has work waiting is the
+// question, and an extra click to see the answer is an extra click every time.
+const lifecycle = useLifecycleStore()
+const openLifecycle = computed(() => navActive.value === 'lifecycle')
+watch(
+  () => [auth.isProvider, openLifecycle.value],
+  ([isProvider, open]) => {
+    if (isProvider && open && !lifecycle.loaded) lifecycle.load()
+  },
+  { immediate: true },
+)
 const initials = computed(() =>
   (auth.name || auth.email || '?')
     .split(/[@\s.]+/)
@@ -41,6 +55,27 @@ const initials = computed(() =>
       <nav class="nav">
         <router-link v-if="auth.isProvider" to="/dashboard" class="navitem" :class="{ active: navActive === 'dashboard' }">
           <span class="ic">◐</span> Dashboard
+        </router-link>
+        <router-link v-if="auth.isProvider" to="/lifecycle" class="navitem" :class="{ active: navActive === 'lifecycle' }">
+          <span class="ic">◷</span> Lifecycle
+        </router-link>
+        <!-- Expanded only while you are in it: five permanent sub-items would crowd out
+             everything else in the sidebar for the sake of a page nobody is on. -->
+        <div v-if="auth.isProvider && openLifecycle" class="substeps">
+          <router-link
+            v-for="(s, i) in STAGES"
+            :key="s.key"
+            :to="`/lifecycle/${s.key.toLowerCase()}`"
+            class="substep"
+            :class="{ active: route.params.stage === s.key.toLowerCase() }"
+          >
+            <span class="stepn">{{ i + 1 }}</span>
+            <span class="steplabel">{{ s.label }}</span>
+            <span v-if="lifecycle.countFor(s.key)" class="stepn n">{{ lifecycle.countFor(s.key) }}</span>
+          </router-link>
+        </div>
+        <router-link v-if="auth.isProvider" to="/finance" class="navitem" :class="{ active: navActive === 'finance' }">
+          <span class="ic">◎</span> Finance
         </router-link>
         <router-link v-if="auth.isProvider" to="/customers" class="navitem" :class="{ active: navActive === 'customers' }">
           <span class="ic">◈</span> Customers
@@ -98,6 +133,20 @@ const initials = computed(() =>
 .navitem:hover { background: rgba(255, 255, 255, 0.08); text-decoration: none; }
 .navitem.active { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
 .navitem .ic { width: 18px; text-align: center; opacity: 0.8; }
+.substeps { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 15px; padding-left: 14px; border-left: 1px solid rgba(255, 255, 255, 0.16); }
+.substep {
+  display: flex; align-items: center; gap: 9px; padding: 6px 10px; border-radius: 8px;
+  color: var(--sky-weak); font-size: 13px; text-decoration: none;
+}
+.substep:hover { background: rgba(255, 255, 255, 0.08); text-decoration: none; }
+.substep.active { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
+.steplabel { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The step's own number, and — where there is work — how much of it is waiting. */
+.stepn {
+  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sky);
+  min-width: 15px; text-align: center;
+}
+.stepn.n { background: rgba(255, 255, 255, 0.16); border-radius: 999px; padding: 1px 6px; color: #fff; }
 .userbox {
   display: flex; align-items: center; gap: 10px;
   padding: 10px; border-top: 1px solid rgba(255, 255, 255, 0.16); margin-top: 8px;

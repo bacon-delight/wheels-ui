@@ -1,12 +1,12 @@
 <script setup>
-import { computed, onMounted, ref, watch, watchEffect } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import ChangeReviewPanel from '../../components/ChangeReviewPanel.vue'
 import Dialog from '../../components/Dialog.vue'
 import { api } from '../../services/api'
 import ExtractionMeta from '../../components/ExtractionMeta.vue'
-import { CATEGORIES, docLabel, estimateMonthly, money, useEngagementStore } from '../../stores/engagement'
+import { CATEGORIES, docLabel, money, useEngagementStore } from '../../stores/engagement'
 
 const route = useRoute()
 const eid = route.params.eid
@@ -23,65 +23,9 @@ const changeComment = ref('')
 const changeNote = ref('')
 const rejectNote = ref('')
 
-// provider: fleet size (finalized during approval, locked once billing is active)
-const fleetInput = ref(100)
-const savingFleet = ref(false)
-const canSetFleet = computed(
-  () => eng.isProvider && eng.reviewable && !['BILLING_SETUP', 'ACTIVE'].includes(eng.status),
-)
-// The recurring estimate is built from the priced terms, shaped the way the shared estimator
-// expects. Only terms that carry a per-vehicle monthly basis end up counting, which the
-// estimator decides.
-const electedLines = computed(() =>
-  eng.termsIn('pricing').map((t) => ({
-    fee_items: [
-      {
-        amount: t.amount,
-        unit_basis: t.unit_basis,
-        tier_bands: t.record?.tier_bands || [],
-      },
-    ],
-  })),
-)
-const estMonthly = computed(() => estimateMonthly(electedLines.value, fleetInput.value))
-// Clearing the override hands the number back to the vehicle inventory.
-async function useInventoryCount() {
-  savingFleet.value = true
-  try {
-    await api.patch(`/engagements/${eid}/billing`, { fleet_size: null })
-    await eng.load(eid)
-  } catch {
-    /* ignore; server reconciles on next load */
-  }
-  savingFleet.value = false
-}
-watchEffect(() => {
-  const fs = eng.data?.engagement?.fleet_size
-  if (fs != null) fleetInput.value = fs
-})
-async function saveFleet() {
-  savingFleet.value = true
-  try {
-    await api.patch(`/engagements/${eid}/billing`, { fleet_size: Math.max(1, Number(fleetInput.value) || 1) })
-    await eng.load(eid)
-  } catch {
-    /* ignore; server reconciles on next load */
-  }
-  savingFleet.value = false
-}
-
-// provider: finance validation (a deliberate, independent gate — nothing is pre-approved)
-const financeMode = ref('idle') // idle | changes
-const financeChecked = ref(false)
-const financeComment = ref('')
-async function financeApprove() {
-  await eng.action('finance-approve')
-}
-async function financeReject() {
-  await eng.action('finance-request-changes', { comment: financeComment.value })
-  financeMode.value = 'idle'
-  financeComment.value = ''
-}
+// Fleet size lives on the Vehicles tab and what it bills lives on Billing; Terms is about
+// terms. Once the customer signs, billing is generated without anyone keying anything, and
+// the check on it happens in the billing audit — beside the contract, not here.
 
 function onUpload(e) {
   const files = e.target.files
@@ -375,23 +319,6 @@ onMounted(() => {
     <!-- Change verification: did the re-uploaded terms reflect the customer's request? -->
     <ChangeReviewPanel v-if="eng.submission && eng.reviewable" :eid="eid" :sid="eng.submission.submission_id" :status="eng.status" />
 
-    <!-- Fleet size — finalized during approval, drives recurring dues -->
-    <div class="card pad" v-if="canSetFleet && hasTerms()">
-      <div class="spread" style="align-items: flex-start">
-        <div>
-          <h2 style="margin: 0">Fleet size</h2>
-          <p class="muted small" style="margin: 6px 0 0; max-width: 470px">Vehicles under management. This follows the inventory by default — {{ eng.assignedVehicleCount }} assigned to this engagement. Type a number to override it. Locks once billing is set up.</p>
-        </div>
-        <label class="fleetset"><span class="label">Vehicles {{ savingFleet ? '· saving…' : '' }}</span><input type="number" min="1" v-model.number="fleetInput" @change="saveFleet" /></label>
-      </div>
-      <div class="row" style="margin-top: 10px; gap: 8px">
-        <span class="badge" :class="eng.fleetSizeSource === 'override' ? 'warn' : 'ok'"><span class="dot" />{{ eng.fleetSizeSource === 'override' ? 'Manual override' : 'From inventory' }}</span>
-        <router-link class="btn-link" :to="`/engagements/${eid}/vehicles`">{{ eng.assignedVehicleCount }} assigned</router-link>
-        <button v-if="eng.fleetSizeSource === 'override'" class="ghost sm" :disabled="savingFleet" @click="useInventoryCount">Use inventory count</button>
-      </div>
-      <div class="estline">Estimated recurring <strong>{{ money(estMonthly) }}</strong>/mo <span class="muted">at {{ fleetInput }} vehicles</span></div>
-    </div>
-
     <!-- Extracted terms, in the four categories a contract is read through -->
     <div class="card pad" v-if="hasTerms() && eng.reviewable">
       <div class="spread" style="align-items: flex-start; margin-bottom: 12px">
@@ -453,7 +380,7 @@ onMounted(() => {
     </div>
 
     <!-- Next-step actions -->
-    <div class="card pad" v-if="['IN_UNDERWRITING', 'FINANCE_APPROVED'].includes(eng.status)">
+    <div class="card pad" v-if="eng.status === 'IN_UNDERWRITING'">
       <h2>Next step</h2>
       <div v-if="eng.status === 'IN_UNDERWRITING'">
         <!-- Nothing was recognised as an agreement, so there are no terms to approve. Saying
@@ -474,32 +401,30 @@ onMounted(() => {
           <p v-if="!eng.allApproved" class="muted small" style="margin-top: 8px">Approve all {{ eng.totalTerms }} terms first — {{ eng.approvedTerms }}/{{ eng.totalTerms }} approved. Open each agreement's <strong>Review</strong> and click “Approve all”.</p>
         </template>
       </div>
-      <button v-else-if="eng.status === 'FINANCE_APPROVED'" class="primary" :disabled="!!eng.busy" @click="eng.action('setup-billing')">{{ eng.busy === 'setup-billing' ? 'Generating…' : 'Set up billing' }}</button>
     </div>
 
-    <!-- Finance validation: an independent review after the customer accepts (never pre-approved) -->
-    <div class="card pad finance" v-if="eng.status === 'PENDING_FINANCE_APPROVAL'">
+    <!-- Billing is generated the moment the customer signs; what is left is to audit it,
+         which happens beside the contract rather than here. -->
+    <div class="card pad finance" v-if="['BILLING_SETUP', 'PENDING_BILLING_AUDIT'].includes(eng.status)">
       <div class="spread" style="align-items: flex-start; margin-bottom: 4px">
-        <h2 style="margin: 0">Finance validation</h2>
-        <span class="badge info">Independent review</span>
+        <h2 style="margin: 0">Billing audit</h2>
+        <span class="badge info">Last step before go-live</span>
       </div>
-      <p class="muted small" style="margin: 0 0 12px; max-width: 620px">
-        The customer has accepted these terms. Finance must independently review and validate them before billing is set up — approval is never automatic. Review the proposed terms above and the <router-link :to="{ name: 'eng-summary', params: { eid } }">negotiation summary</router-link>.
-      </p>
-      <div v-if="financeMode === 'idle'" class="stack" style="gap: 12px">
-        <label class="ack"><input type="checkbox" v-model="financeChecked" /> I have independently reviewed the customer-approved terms and confirm they are correct.</label>
-        <div class="row">
-          <button class="primary" :disabled="!financeChecked || !!eng.busy" @click="financeApprove">{{ eng.busy === 'finance-approve' ? 'Approving…' : 'Approve terms (finance)' }}</button>
-          <button :disabled="!!eng.busy" @click="financeMode = 'changes'">Request changes</button>
-        </div>
-      </div>
-      <div v-else class="stack" style="gap: 10px">
-        <textarea v-model="financeComment" rows="3" placeholder="What must change before billing can be set up?" />
-        <div class="row">
-          <button class="primary" :disabled="!financeComment.trim() || !!eng.busy" @click="financeReject">{{ eng.busy === 'finance-request-changes' ? 'Sending…' : 'Send back for changes' }}</button>
-          <button :disabled="!!eng.busy" @click="financeMode = 'idle'">Cancel</button>
-        </div>
-      </div>
+      <template v-if="eng.status === 'BILLING_SETUP'">
+        <p class="muted small" style="margin: 0; max-width: 620px">
+          The customer has signed. Billing is being generated from these terms — nothing to key
+          in. It will be ready to audit in a moment.
+        </p>
+      </template>
+      <template v-else>
+        <p class="muted small" style="margin: 0 0 12px; max-width: 620px">
+          Billing has been generated from the signed terms. Check what makes up an invoice
+          against the contract it was read from, then approve it to take the engagement live.
+        </p>
+        <router-link class="auditlink" :to="`/engagements/${eid}/billing-audit`">
+          Open the billing audit →
+        </router-link>
+      </template>
     </div>
 
     <!-- Customer requested changes -->
@@ -726,6 +651,11 @@ onMounted(() => {
 .fleetset input { text-align: right; }
 .estline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
 .finance { border-left: 3px solid var(--accent); }
+.auditlink {
+  display: inline-block; padding: 9px 16px; border-radius: 10px; font-weight: 600;
+  background: var(--accent); color: #fff; text-decoration: none;
+}
+.auditlink:hover { text-decoration: none; filter: brightness(1.06); }
 .ack { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; cursor: pointer; }
 .ack input { margin-top: 3px; flex-shrink: 0; }
 @media (max-width: 720px) { .opts { grid-template-columns: 1fr; } }

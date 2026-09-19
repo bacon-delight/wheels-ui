@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import Dialog from '../../components/Dialog.vue'
@@ -20,6 +20,52 @@ const chosen = ref(new Set())
 
 const vehicles = computed(() => data.value?.vehicles || [])
 const pretty = (v) => (v || '').replace(/_/g, ' ').toLowerCase()
+
+/**
+ * The billed fleet size lives here rather than on Terms.
+ *
+ * It is a count of vehicles, and this is the page that holds the vehicles — so the number, the
+ * inventory it follows, and the button that hands it back to the inventory are all in one
+ * place. What it costs is on Billing, which is the one page that states money.
+ */
+const fleetInput = ref(100)
+const savingFleet = ref(false)
+const fleetLocked = computed(() =>
+  ['BILLING_SETUP', 'PENDING_BILLING_AUDIT', 'CHANGES_REQUESTED_AUDIT', 'ACTIVE'].includes(
+    eng.status,
+  ),
+)
+const canSetFleet = computed(() => eng.isProvider && !fleetLocked.value)
+async function saveFleet() {
+  savingFleet.value = true
+  try {
+    await api.patch(`/engagements/${eid}/billing`, {
+      fleet_size: Math.max(1, Number(fleetInput.value) || 1),
+    })
+    await Promise.all([load(), eng.load(eid)])
+  } catch (e) {
+    err.value = e.response?.data?.detail || e.message
+  }
+  savingFleet.value = false
+}
+// Clearing the override hands the number back to the vehicle inventory.
+async function useInventoryCount() {
+  savingFleet.value = true
+  try {
+    await api.patch(`/engagements/${eid}/billing`, { fleet_size: null })
+    await Promise.all([load(), eng.load(eid)])
+  } catch (e) {
+    err.value = e.response?.data?.detail || e.message
+  }
+  savingFleet.value = false
+}
+watch(
+  () => eng.data?.engagement?.fleet_size,
+  (fs) => {
+    if (fs != null) fleetInput.value = fs
+  },
+  { immediate: true },
+)
 
 // Grouped so a 40-vehicle engagement reads as a fleet mix, not a wall of rows.
 const byDuty = computed(() => {
@@ -91,8 +137,7 @@ onMounted(load)
         <div>
           <h2 style="margin: 0">Vehicles on this engagement</h2>
           <p class="muted small" style="margin: 6px 0 0">
-            {{ data?.assigned_vehicle_count ?? 0 }} assigned · billing at {{ data?.fleet_size ?? 0 }}
-            <span v-if="data?.fleet_size_source === 'override'" class="muted">(manual override)</span>
+            {{ data?.assigned_vehicle_count ?? 0 }} assigned from the inventory.
           </p>
         </div>
         <button v-if="eng.isProvider" class="primary nowrap" @click="openPicker">＋ Assign vehicles</button>
@@ -102,6 +147,42 @@ onMounted(load)
         <span v-for="[band, n] in byDuty" :key="band" class="pill role">{{ pretty(band) }} <b>{{ n }}</b></span>
       </div>
       <p v-if="err" class="err">{{ err }}</p>
+    </div>
+
+    <!-- The billed fleet size: what recurring dues are multiplied by. Follows the inventory
+         unless somebody overrides it, and locks the moment billing is generated. -->
+    <div v-if="eng.isProvider" class="card pad">
+      <div class="spread" style="align-items: flex-start">
+        <div>
+          <h2 style="margin: 0">Billed fleet size</h2>
+          <p class="muted small" style="margin: 6px 0 0; max-width: 480px">
+            The vehicle count recurring dues are charged against. It follows the
+            {{ data?.assigned_vehicle_count ?? 0 }} assigned above unless you override it, and
+            locks once billing has been generated.
+          </p>
+        </div>
+        <label v-if="canSetFleet" class="fleetset">
+          <span class="label">Vehicles {{ savingFleet ? '· saving…' : '' }}</span>
+          <input type="number" min="1" v-model.number="fleetInput" @change="saveFleet" />
+        </label>
+        <div v-else class="fleetset">
+          <span class="label">Vehicles</span>
+          <div class="fleetval">{{ data?.fleet_size ?? 0 }}</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 10px; gap: 8px">
+        <span class="badge" :class="eng.fleetSizeSource === 'override' ? 'warn' : 'ok'">
+          <span class="dot" />{{ eng.fleetSizeSource === 'override' ? 'Manual override' : 'From inventory' }}
+        </span>
+        <span v-if="fleetLocked" class="badge"><span class="dot" />Locked — billing is set up</span>
+        <button
+          v-if="canSetFleet && eng.fleetSizeSource === 'override'"
+          class="ghost sm"
+          :disabled="savingFleet"
+          @click="useInventoryCount"
+        >Use inventory count</button>
+        <router-link class="btn-link" :to="`/engagements/${eid}/billing`">What it bills →</router-link>
+      </div>
     </div>
 
 
@@ -159,6 +240,9 @@ onMounted(load)
 .pad { padding: 20px; }
 .bands { gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 .nowrap { white-space: nowrap; }
+.fleetset { display: flex; flex-direction: column; gap: 6px; width: 130px; }
+.fleetset input { text-align: right; }
+.fleetval { font-family: var(--serif); font-size: 22px; font-weight: 600; padding: 4px 0; text-align: right; }
 .vtab { width: 100%; border-collapse: collapse; font-size: 13px; }
 .vtab th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--line); }
 .vtab td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }

@@ -94,9 +94,13 @@ export const useEngagementStore = defineStore('engagement', {
     eid: null,
     data: null,
     clientTerms: [],
-    // Customer-side people on this customer's other engagements, fetched when the invite
-    // dialog opens rather than with the engagement: nothing else on the page needs them.
+    // Who could be given access: this customer's own contacts with no query, anyone with an
+    // account when there is one. Fetched when the invite dialog opens rather than with the
+    // engagement, since nothing else on the page needs them.
     candidates: [],
+    candTotal: 0,
+    searching: false,
+    candSeq: 0,
     busy: '', // verb of the in-flight action ('' = idle)
     err: '',
     loaded: false,
@@ -378,38 +382,59 @@ export const useEngagementStore = defineStore('engagement', {
     async invite(email, name) {
       this.busy = 'invite'
       this.err = ''
+      let outcome = ''
       try {
-        // Engagement invites are always customer-side; provider staff live under Users.
-        await api.post(`/engagements/${this.eid}/invitations`, { email, name: name || null })
+        // Engagement invites are always customer-side; provider staff live under Users. The
+        // server answers which of the two happened: a new account, or access for one that
+        // already existed.
+        const { data } = await api.post(`/engagements/${this.eid}/invitations`, {
+          email,
+          name: name || null,
+        })
+        outcome = data.outcome || 'invited'
         await this.load(this.eid)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       } finally {
         this.busy = ''
       }
+      return outcome
     },
-    async loadCandidates() {
+    async loadCandidates(q = '') {
+      // Each keystroke's answer can arrive out of order; only the newest may write.
+      const seq = ++this.candSeq
+      this.searching = true
       try {
-        const { data } = await api.get(`/engagements/${this.eid}/invitations/candidates`)
+        const { data } = await api.get(`/engagements/${this.eid}/invitations/candidates`, {
+          params: q ? { q } : {},
+        })
+        if (seq !== this.candSeq) return
         this.candidates = data.candidates || []
+        this.candTotal = data.total ?? this.candidates.length
       } catch {
         // The picker is an accelerator, never the only way in — a failure here leaves the
         // invite-by-email path working rather than blocking the dialog with an error.
-        this.candidates = []
+        if (seq === this.candSeq) {
+          this.candidates = []
+          this.candTotal = 0
+        }
+      } finally {
+        if (seq === this.candSeq) this.searching = false
       }
     },
-    async addMember(userId) {
+    async addMember(userId, q = '') {
       this.busy = 'invite'
       this.err = ''
       try {
         await api.post(`/engagements/${this.eid}/members`, { user_id: userId })
         await this.load(this.eid)
-        await this.loadCandidates()
+        await this.loadCandidates(q)
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       } finally {
         this.busy = ''
       }
+      return this.err ? '' : 'access'
     },
   },
 })

@@ -556,9 +556,12 @@ onMounted(() => {
   fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round;
 }
 .finder:focus-within .finder__ico { color: var(--accent); }
-.finder__in { flex: 1; min-width: 0; height: 100%; border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--ink); }
+/* The global input style gives every field its own border, padding and focus ring. Inside the
+   pill that reads as a second box drawn within the first, so the field keeps none of them and
+   the pill is the only thing that lights up. */
+.finder__in { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; font-size: 12.5px; color: var(--ink); }
 .finder__in::placeholder { color: var(--muted); }
-.finder__in:focus { outline: none; }
+.finder__in:focus { outline: none; border: 0; box-shadow: none; }
 .finder__in::-webkit-search-cancel-button, .finder__in::-webkit-search-decoration { -webkit-appearance: none; display: none; }
 /* Shown only when there is something to clear. */
 .finder__x { display: none; place-items: center; flex: 0 0 auto; width: 24px; height: 24px; border: 0; border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }

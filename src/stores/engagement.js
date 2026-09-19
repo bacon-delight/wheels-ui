@@ -94,6 +94,9 @@ export const useEngagementStore = defineStore('engagement', {
     eid: null,
     data: null,
     clientTerms: [],
+    // Customer-side people on this customer's other engagements, fetched when the invite
+    // dialog opens rather than with the engagement: nothing else on the page needs them.
+    candidates: [],
     busy: '', // verb of the in-flight action ('' = idle)
     err: '',
     loaded: false,
@@ -376,9 +379,32 @@ export const useEngagementStore = defineStore('engagement', {
       this.busy = 'invite'
       this.err = ''
       try {
-        // Engagement invites are always customer reviewers; provider staff live under Users.
+        // Engagement invites are always customer-side; provider staff live under Users.
         await api.post(`/engagements/${this.eid}/invitations`, { email, name: name || null })
         await this.load(this.eid)
+      } catch (e) {
+        this.err = e.response?.data?.detail || e.message
+      } finally {
+        this.busy = ''
+      }
+    },
+    async loadCandidates() {
+      try {
+        const { data } = await api.get(`/engagements/${this.eid}/invitations/candidates`)
+        this.candidates = data.candidates || []
+      } catch {
+        // The picker is an accelerator, never the only way in — a failure here leaves the
+        // invite-by-email path working rather than blocking the dialog with an error.
+        this.candidates = []
+      }
+    },
+    async addMember(userId) {
+      this.busy = 'invite'
+      this.err = ''
+      try {
+        await api.post(`/engagements/${this.eid}/members`, { user_id: userId })
+        await this.load(this.eid)
+        await this.loadCandidates()
       } catch (e) {
         this.err = e.response?.data?.detail || e.message
       } finally {

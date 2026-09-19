@@ -29,6 +29,7 @@ const ACTION_LABEL = {
   field_approved: 'Term approved',
   field_corrected: 'Term corrected',
   user_invited: 'User invited',
+  user_added: 'User given access',
   engagement_created: 'Engagement created',
   amendment_opened: 'Amendment opened',
   amendment_discarded: 'Amendment discarded',

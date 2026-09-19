@@ -170,13 +170,8 @@ const nextHint = computed(() => {
           <span v-if="statusNote" class="muted" style="font-weight: 400; font-size: 13px">{{ statusNote }}</span>
         </div>
       </div>
-      <div class="stattile">
-        <div class="label">Customer</div>
-        <div class="val">
-          <router-link v-if="eng.customer" :to="`/customers/${eng.customer.customer_id}`">{{ eng.data.engagement.client_name }}</router-link>
-          <span v-else>{{ eng.data.engagement.client_name }}</span>
-        </div>
-      </div>
+      <!-- No Customer tile: the engagement header already names the customer and links to
+           them, and a tile repeating it costs a slot that carries something new. -->
       <div class="stattile">
         <div class="label">Vehicles</div>
         <div class="val">
@@ -192,6 +187,15 @@ const nextHint = computed(() => {
             <span class="muted" style="font-weight: 400; font-size: 13px">{{ expiry.label }}</span>
           </template>
           <span v-else class="muted" style="font-size: 15px">Not recorded</span>
+        </div>
+      </div>
+      <div v-if="eng.coverage && eng.coverage.total" class="stattile">
+        <div class="label">Services</div>
+        <div class="val">
+          <router-link :to="{ name: 'eng-services', params: { eid: route.params.eid } }">
+            {{ eng.coverage.availed }}<span class="muted" style="font-weight: 400">/{{ eng.coverage.total }}</span>
+          </router-link>
+          <span class="muted" style="font-weight: 400; font-size: 13px">&nbsp;availed</span>
         </div>
       </div>
       <div class="stattile"><div class="label">Created</div><div class="val">{{ fmt(eng.data.engagement.created_at) }}</div></div>

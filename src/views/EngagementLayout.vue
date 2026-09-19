@@ -12,7 +12,13 @@ const tabs = computed(() => {
   const base = [
     { name: 'eng-overview', label: 'Overview' },
     { name: 'eng-terms', label: 'Terms' },
-    { name: 'eng-services', label: 'Services' },
+    {
+      name: 'eng-services',
+      label: 'Services',
+      // The count rides the tab so "how much of what we sell is this customer buying" is
+      // answerable without opening it.
+      count: eng.coverage ? `${eng.coverage.availed}/${eng.coverage.total}` : null,
+    },
     { name: 'eng-billing', label: 'Billing' },
     { name: 'eng-vehicles', label: 'Vehicles' },
     { name: 'eng-summary', label: 'Conversations' },
@@ -57,7 +63,7 @@ watch(() => route.params.eid, reload)
         :to="{ name: t.name, params: { eid: route.params.eid } }"
         class="tab"
         exact-active-class="active"
-      >{{ t.label }}</router-link>
+      >{{ t.label }}<span v-if="t.count" class="tabn">{{ t.count }}</span></router-link>
     </nav>
 
     <p v-if="eng.err" class="err">{{ eng.err }}</p>
@@ -68,6 +74,8 @@ watch(() => route.params.eid, reload)
 </template>
 
 <style scoped>
+.tabn { margin-left: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tab.active .tabn, .active .tabn { color: var(--accent); }
 .amendpill { font-size: 12px; background: var(--accent-weak); color: var(--accent-ink); }
 .wrap { max-width: 1680px; margin: 0 auto; padding: 28px 32px 60px; }
 .back { display: inline-block; font-size: 13px; margin-bottom: 14px; }

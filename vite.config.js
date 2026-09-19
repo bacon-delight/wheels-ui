@@ -1,5 +1,3 @@
-import { fileURLToPath } from 'node:url'
-
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
@@ -19,9 +17,9 @@ export default defineConfig({
   // amazon-cognito-identity-js references `global`; map it to the browser globalThis.
   define: { global: 'globalThis' },
   resolve: {
-    alias: authStub
-      ? { [fileURLToPath(new URL('./src/services/auth.js', import.meta.url))]: authStub }
-      : {},
+    // Matched on the import specifier every caller writes ('../services/auth'), not on a
+    // resolved absolute path — an absolute key never matches a relative import.
+    alias: authStub ? [{ find: /^.*\/services\/auth$/, replacement: authStub }] : [],
   },
   server: { port: 5173 },
 })

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import ExtractionMeta from '../components/ExtractionMeta.vue'
 import SidePanel from '../components/SidePanel.vue'
-import TermCard from '../components/TermCard.vue'
+import TermTable from '../components/TermTable.vue'
 import { api } from '../services/api'
 import { useAuthStore } from '../stores/auth'
 import { useCatalogStore } from '../stores/catalog'
@@ -109,8 +109,19 @@ const bareService = (s) => (s || '').split('(')[0].trim()
 const violatedPrograms = computed(
   () => new Set(violations.value.map((it) => bareService(it.service))),
 )
-const isViolated = (t) =>
-  t.category === 'pricing' && violatedPrograms.value.has(bareService(t.record?.program))
+// Which stored terms the re-upload check flagged, by id, so the table can mark them.
+const violatedIds = computed(
+  () =>
+    new Set(
+      terms.value
+        .filter(
+          (t) =>
+            t.category === 'pricing' &&
+            violatedPrograms.value.has(bareService(t.record?.program)),
+        )
+        .map((t) => t.record_id),
+    ),
+)
 
 async function loadReview(submissionId) {
   if (!submissionId) return
@@ -153,7 +164,9 @@ async function load() {
 function selectTerm(t) {
   // Cards collapse by default and only the selected one opens its editor: three hundred live
   // textareas is not a usable screen.
-  selected.value = selected.value?.record_id === t.record_id ? null : t
+  const same = selected.value?.record_id === t.record_id
+  if (!same) draft.value = null
+  selected.value = same ? null : t
   const page = t.citations?.[0]?.page
   if (page && pageEls.value[page]) {
     pageEls.value[page].scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -187,7 +200,21 @@ async function patchTerm(t, payload) {
 }
 
 const approveTerm = (t) => patchTerm(t, { approved: true })
-const saveTerm = (t, record) => patchTerm(t, { record, approved: true })
+
+// The correction draft lives here, with the save, rather than inside the row that renders it.
+const draft = ref(null)
+function startEdit(t) {
+  draft.value = { ...(t.record || {}) }
+}
+function saveDraft(t) {
+  const record = draft.value
+  draft.value = null
+  patchTerm(t, { record, approved: true })
+}
+function linkTerm(t, programId) {
+  const program = catalog.options.find((o) => o.value === programId)
+  if (program) patchTerm(t, { record: { ...(t.record || {}), program: program.label } })
+}
 
 async function approveTab() {
   // One request rather than one per term. The serial loop this replaces was three hundred
@@ -322,19 +349,6 @@ onMounted(() => {
         </div>
 
         <div class="tlist">
-          <div v-for="t in shown" :key="t.record_id" :class="{ violated: isViolated(t) }">
-            <TermCard
-              :term="t"
-              :selected="selected?.record_id === t.record_id"
-              :editable="canApprove"
-              :catalog-options="catalog.options"
-              :busy="busy"
-              @select="selectTerm"
-              @approve="approveTerm"
-              @save="saveTerm"
-            />
-          </div>
-
           <p v-if="!terms.length && !loaded" class="muted" style="padding: 20px">Loading…</p>
           <p v-else-if="!terms.length" class="muted" style="padding: 20px">
             No terms extracted yet — run extraction on this document.
@@ -345,6 +359,24 @@ onMounted(() => {
           <p v-else-if="!shown.length" class="muted" style="padding: 20px">
             Nothing in this category for this agreement.
           </p>
+          <TermTable
+            v-else
+            :terms="shown"
+            :category="tab"
+            :selected-id="selected?.record_id || null"
+            :editable="canApprove"
+            :catalog-options="catalog.options"
+            :busy="busy"
+            :draft="draft"
+            :violated="violatedIds"
+            @select="selectTerm"
+            @approve="approveTerm"
+            @edit="startEdit"
+            @cancel="draft = null"
+            @save="saveDraft"
+            @link="linkTerm"
+            @field="(k, v) => draft && (draft[k] = v)"
+          />
         </div>
       </div>
     </div>
@@ -429,9 +461,12 @@ onMounted(() => {
 /* The filled pill takes the accent on a tab, never the danger red it uses standalone: a tab
    row is navigation, and a red pill beside the underline reads as something having gone wrong. */
 .tab .badge--notification {
+  /* Grid with place-items centres on both axes whatever the base .badge sets. Relying on the
+     inherited flex alignment plus a line-height left the digit sitting high in the pill. */
+  display: inline-grid; place-items: center;
   min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px;
   margin-left: 1px; background: var(--accent); color: #fff;
-  font-weight: 500; font-size: 11px; line-height: 19px; text-align: center;
+  font-weight: 500; font-size: 11px; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .tab:not(.is-active) .badge--notification { background: var(--muted); }
@@ -463,8 +498,7 @@ onMounted(() => {
 .elsewhere { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--muted); }
 .elsewhere .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
 .elsewhere .link:hover { text-decoration: underline; }
-.tlist { flex: 1; overflow-y: auto; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
-.violated :deep(.tcard) { border-left: 3px solid var(--warn); background: var(--warn-weak); }
+.tlist { flex: 1; overflow-y: auto; }
 
 .crtrigger { display: inline-flex; align-items: center; gap: 8px; }
 .crtrigger.hasflag { border-color: var(--warn); color: var(--warn); }
